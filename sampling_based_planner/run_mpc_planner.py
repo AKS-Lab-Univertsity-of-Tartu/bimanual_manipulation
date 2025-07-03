@@ -13,7 +13,7 @@ rotation_threshold=0.1
 ik_pos_thresh = 1.1*position_threshold
 ik_rot_thresh = 1.1*rotation_threshold
 timestep = 0.05
-collision_free_ik_dt = 5*timestep
+collision_free_ik_dt = 10*timestep
 
 #Customized parameters
 results = run_cem_planner(
@@ -59,7 +59,7 @@ results = run_cem_planner(
     rotation_threshold=rotation_threshold,   # Stricter rotation convergence Better for more complex tasks
     
     # Save Motion Related data
-    save_data=True,
+    save_data=False,
     data_dir=f'custom_data_{target_names[:-1]}_inference_{inference}',
     
     # Save Point Cloud data
