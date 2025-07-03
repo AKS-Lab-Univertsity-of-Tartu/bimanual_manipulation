@@ -381,8 +381,6 @@ def run_cem_planner(
     target_pos_2 = model.body(name="target_1").pos
     target_quat_2 = model.body(name="target_1").quat
 
-
-
     if show_viewer:
         with viewer.launch_passive(model, data) as viewer_:
             viewer_.cam.distance = cam_distance
@@ -477,8 +475,14 @@ def run_cem_planner(
                     # current_cost_r = quaternion_distance(data.xquat[cem.hande_id], target_quat)
                     # current_cost = np.round(cost, 2)
 
-                    current_cost_g = (np.linalg.norm(data.site_xpos[cem.tcp_id] - target_pos_1) + np.linalg.norm(data.site_xpos[cem.tcp_id_2] - target_pos_2))/2  
-                    current_cost_r = (quaternion_distance(data.xquat[cem.hande_id], target_quat_1) + quaternion_distance(data.xquat[cem.hande_id_2], target_quat_2))/2    
+                    current_cost_g_1 = np.linalg.norm(data.site_xpos[cem.tcp_id] - target_pos_1)
+                    current_cost_r_1 = quaternion_distance(data.xquat[cem.hande_id], target_quat_1)
+
+                    current_cost_g_2 = np.linalg.norm(data.site_xpos[cem.tcp_id_2] - target_pos_2)
+                    current_cost_r_2 = quaternion_distance(data.xquat[cem.hande_id_2], target_quat_2)
+
+                    current_cost_g = (current_cost_g_1 + current_cost_g_2)/2  
+                    current_cost_r = (current_cost_r_1 + current_cost_r_2)/2    
                     current_cost = np.round(cost, 2)
                     
                     if current_cost_g < position_threshold and current_cost_r < rotation_threshold:
@@ -503,30 +507,56 @@ def run_cem_planner(
                             model.body(name="target_1").quat = target_rotations_2[target_idx]
                             # current_target = target_names[target_idx]
                     
+                    thetadot_cem = np.mean(best_vels[1:int(num_steps*0.9)], axis=0)
 
                     #ACtivate  collision free IK if cost position/rotation is less than ik_threshold
-                    if current_cost_g < ik_pos_thresh and current_cost_r < ik_rot_thresh:
-                        collision_free_ik = False
+                    if current_cost_g_1 < ik_pos_thresh and current_cost_r_1 < ik_rot_thresh:
+                        collision_free_ik_1 = True
                     else:
-                        collision_free_ik = False
+                        collision_free_ik_1 = False
 
-                    if collision_free_ik:
+                    if collision_free_ik_1:
                         #Collision Free IK
-                        ik_solver = InverseKinematicsSolver(cem.model, data.qpos[:num_dof])
+                        ik_solver_1 = InverseKinematicsSolver(cem.model, data.qpos[:num_dof], "tcp")
 
-                        ik_solver.set_target(target_pos_1, target_quat_1)
+                        ik_solver_1.set_target(target_pos_1, target_quat_1)
 
                         print("\n" + "-" * 10)
                         print(">>> COLLISION-FREE IK IS ACTIVATED <<<")
                         print("-" * 10 + "\n")
-                        
+                    
                         # Apply control as per MPC coupled with  CEM
-                        thetadot = ik_solver.solve(dt=collision_free_ik_dt)
+                        thetadot_1 = ik_solver_1.solve(dt=collision_free_ik_dt)[:num_dof//2]
 
+                    else:    
+                        # Apply control as per MPC coupled with  CEM
+                        thetadot_1 = thetadot_cem[:num_dof//2]
+
+
+
+                    if current_cost_g_2 < ik_pos_thresh and current_cost_r_2 < ik_rot_thresh:
+                        collision_free_ik_2 = True
+                    else:
+                        collision_free_ik_2 = False
+
+                    if collision_free_ik_2:
+                        #Collision Free IK
+                        ik_solver_2 = InverseKinematicsSolver(cem.model, data.qpos[:num_dof], "tcp_2")
+
+                        ik_solver_2.set_target(target_pos_2, target_quat_2)
+
+                        print("\n" + "-" * 10)
+                        print(">>> COLLISION-FREE IK IS ACTIVATED <<<")
+                        print("-" * 10 + "\n")
+                    
+                        # Apply control as per MPC coupled with  CEM
+                        thetadot_2 = ik_solver_2.solve(dt=collision_free_ik_dt)[num_dof//2:num_dof]
                     else:    
 
                         # Apply control as per MPC coupled with  CEM
-                        thetadot = np.mean(best_vels[1:int(num_steps*0.9)], axis=0)
+                        thetadot_2 = thetadot_cem[num_dof//2:num_dof]
+
+                    thetadot = np.concatenate((thetadot_1, thetadot_2), axis=None)
                     
                     data.qvel[:num_dof] = thetadot
 
