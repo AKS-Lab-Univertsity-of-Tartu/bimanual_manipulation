@@ -36,6 +36,7 @@ class cem_planner():
 		}
 
 		self.t_fin = self.num*self.t
+		self.init_joint_position = np.array([1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0])
 		
 		tot_time = np.linspace(0, self.t_fin, self.num)
 		self.tot_time = tot_time
@@ -182,8 +183,11 @@ class cem_planner():
 		self.hande_id = self.model.body(name="hande").id
 		self.tcp_id = self.model.site(name="tcp").id
 
+		self.hande_id_2 = self.model.body(name="hande_2").id
+		self.tcp_id_2 = self.model.site(name="tcp_2").id
+
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None))
-		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0))
+		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0))
 
 		
 
@@ -419,10 +423,11 @@ class cem_planner():
 		theta = mjx_data.qpos[:self.num_dof]
 		eef_rot = mjx_data.xquat[self.hande_id]	
 		eef_pos = mjx_data.site_xpos[self.tcp_id]
+		eef_rot_2 = mjx_data.xquat[self.hande_id_2]	
+		eef_pos_2 = mjx_data.site_xpos[self.tcp_id_2]
 		collision = mjx_data.contact.dist[self.mask]
-		#collision shape is equal to self.mask.sum(); it means number of True elements in self.mask
 
-		return mjx_data, (theta, eef_pos, eef_rot, collision)
+		return mjx_data, (theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision)
 
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_rollout_single(self, thetadot, init_pos, init_vel):
@@ -433,24 +438,35 @@ class cem_planner():
 		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
-		theta, eef_pos, eef_rot, collision = out
-		return theta.T.flatten(), eef_pos, eef_rot, collision
+		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = out
+		return theta.T.flatten(), eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision
 	
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_cost_single(self, eef_pos, eef_rot, collision, target_pos, target_rot):
+	def compute_cost_single(self, theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2):
 		# jax.debug.print("collision in function: {}", jnp.shape(collision))
 		# jax.debug.print("eef_pos in function: {}", jnp.shape(eef_pos))
 		# jax.debug.print("eef_rot in function: {}", jnp.shape(eef_rot))
 		# jax.debug.print("target_pos in function: {}", jnp.shape(target_pos))
 		# jax.debug.print("target_rot in function: {}", jnp.shape(target_rot))
-        		
-		cost_g_ = jnp.linalg.norm(eef_pos - target_pos, axis=1)
-		cost_g = cost_g_[-1] + jnp.sum(cost_g_[:-1])
+
+		cost_g_1 = jnp.linalg.norm(eef_pos - target_pos, axis=1)
+		cost_g_2 = jnp.linalg.norm(eef_pos_2 - target_pos_2, axis=1)
+		cost_g = (np.sum(cost_g_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_g_2 * jnp.linspace(0, 1, self.num)))/2
 
 		dot_product = jnp.abs(jnp.dot(eef_rot/jnp.linalg.norm(eef_rot, axis=1).reshape(1, self.num).T, target_rot/jnp.linalg.norm(target_rot)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_ = 2 * jnp.arccos(dot_product)
 		cost_r = cost_r_[-1] + jnp.sum(cost_r_[:-1])
+
+		dot_product = jnp.abs(jnp.dot(eef_rot/jnp.linalg.norm(eef_rot, axis=1).reshape(1, self.num).T, target_rot/jnp.linalg.norm(target_rot)))
+		dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		cost_r_1 = 2 * jnp.arccos(dot_product)
+
+		dot_product = jnp.abs(jnp.dot(eef_rot_2/jnp.linalg.norm(eef_rot_2, axis=1).reshape(1, self.num).T, target_rot_2/jnp.linalg.norm(target_rot_2)))
+		dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		cost_r_2 = 2 * jnp.arccos(dot_product)
+
+		cost_r = (np.sum(cost_r_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_2 * jnp.linspace(0, 1, self.num)))/2
 
 		# HIgher y implies stricter condition on g to be positive 
 		y = 0.2
@@ -468,9 +484,11 @@ class cem_planner():
 
 		cost_c = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision < 0)
 
+		cost_theta = jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T - self.init_joint_position)
+
 		# jax.debug.print("cost_c in function: {}", cost_c)
 
-		cost = self.cost_weights['w_pos']*cost_g + self.cost_weights['w_rot']*cost_r + self.cost_weights['w_col']*cost_c
+		cost = self.cost_weights['w_pos']*cost_g + self.cost_weights['w_rot']*cost_r + self.cost_weights['w_col']*cost_c + 0.3*cost_theta
 
 		# jax.debug.print("cost_c in function: {}", jnp.shape(cost_c))
 
@@ -511,7 +529,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def cem_iter(self, carry,  scan_over):
 
-		init_pos, init_vel, target_pos, target_rot, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples = carry
+		init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples = carry
 
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
@@ -555,7 +573,7 @@ class cem_planner():
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
 
 
-		theta, eef_pos, eef_rot, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel)
+		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel)
        
 		# jax.debug.print("eef_pos: {}", jnp.shape(eef_pos))
 		# jax.debug.print("eef_rot: {}", jnp.shape(eef_rot))
@@ -564,7 +582,7 @@ class cem_planner():
 		# jax.debug.print("target_pos: {}", jnp.shape(target_pos))
 		# jax.debug.print("target_rot: {}", jnp.shape(target_rot))
 
-		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(eef_pos, eef_rot, collision, target_pos, target_rot)
+		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
@@ -573,11 +591,11 @@ class cem_planner():
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
 
 
-		carry = (init_pos, init_vel, target_pos, target_rot, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new)
+		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new)
 
 		return carry, (cost_batch, cost_g_batch, cost_r_batch, cost_c_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
-
+	
     #=jnp.array([1.5, -1.8, 1.75, -1.25, -1.6, 0]) 
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_cem(
@@ -588,6 +606,8 @@ class cem_planner():
 		init_acc,
 		target_pos,
 		target_rot,
+		target_pos_2,
+		target_rot_2,
 		lamda_init,
 		s_init,
 		xi_samples
@@ -603,6 +623,9 @@ class cem_planner():
 		target_pos = jnp.tile(target_pos, (self.num_batch, 1))
 		target_rot = jnp.tile(target_rot, (self.num_batch, 1))
 
+		target_pos_2 = jnp.tile(target_pos_2, (self.num_batch, 1))
+		target_rot_2 = jnp.tile(target_rot_2, (self.num_batch, 1))
+
 		# state_term = jnp.hstack((theta_init, thetadot_init, thetaddot_init, thetadot_fin, thetaddot_fin))
 
 		#state_term = jnp.hstack((thetadot_init, thetadot_fin))
@@ -616,7 +639,7 @@ class cem_planner():
   
 		key, subkey = jax.random.split(self.key)
 
-		carry = (init_pos, init_vel, target_pos, target_rot, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples)
+		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples)
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)
@@ -631,8 +654,8 @@ class cem_planner():
 		best_cost_r = cost_r_batch[-1][idx_min]
 		best_cost_c = cost_c_batch[-1][idx_min]
 
-		xi_mean = carry[4]
-		xi_cov = carry[5]
+		xi_mean = carry[6]
+		xi_cov = carry[7]
 
 		# primal_res = primal_residual[-1, :, idx_min]
 		# fixed_res = fixed_point_residual[-1, :, idx_min]

@@ -330,8 +330,11 @@ def run_cem_planner(
     s_init = jnp.zeros((cem.num_batch, cem.num_total_constraints))
 
     #Initialize EE pose
-    init_position = data.site_xpos[model.site(name="tcp").id].copy()
-    init_quaternion = data.xquat[model.body(name="hande").id].copy()
+    init_position_1 = data.site_xpos[model.site(name="tcp").id].copy()
+    init_rotation_1 = data.xquat[model.body(name="hande").id].copy()
+
+    init_position_2 = data.site_xpos[model.site(name="tcp_2").id].copy()
+    init_rotation_2 = data.xquat[model.body(name="hande_2").id].copy()
 
     # Load MLP model if inference is enabled
     if inference:
@@ -342,6 +345,41 @@ def run_cem_planner(
     target_idx = 0
     current_target = target_names[target_idx]
     target_reached = False #Initialize
+
+    target_positions_1 = [
+        [-0.3, 0.3, 0.3],
+        [-0.1, -0.35, 0.6],
+        [-0.3, -0.1, 0.3],
+        init_position_1
+    ]
+
+    target_rotations_1 = [
+        rotation_quaternion(-135, np.array([1,0,0])),
+        quaternion_multiply(rotation_quaternion(90, np.array([0,0,1])),rotation_quaternion(135, np.array([1,0,0]))),
+        quaternion_multiply(rotation_quaternion(180, np.array([0,0,1])),rotation_quaternion(-90, np.array([0,1,0]))),
+        init_rotation_1
+    ]
+
+    target_positions_2 = [
+        [-0.3, -0.3, 0.3],
+        [-0.3, 0.4, 0.6],
+        [-0.3, 0.1, 0.3],
+        init_position_2
+    ]
+
+    target_rotations_2 = [
+        quaternion_multiply(rotation_quaternion(180, np.array([0,0,1])), rotation_quaternion(135, np.array([1,0,0]))),
+        quaternion_multiply(rotation_quaternion(-90, np.array([0,0,1])),rotation_quaternion(-135, np.array([1,0,0]))),
+        quaternion_multiply(rotation_quaternion(0, np.array([0,0,1])),rotation_quaternion(90, np.array([0,1,0]))),
+        init_rotation_2
+    ]
+
+    target_idx = 0
+
+    target_pos_1 = model.body(name="target_0").pos
+    target_quat_1 = model.body(name="target_0").quat
+    target_pos_2 = model.body(name="target_1").pos
+    target_quat_2 = model.body(name="target_1").quat
 
 
 
@@ -370,12 +408,12 @@ def run_cem_planner(
                     
 
                     # Determine target position and orientation
-                    if current_target != "home":
-                        target_pos = model.body(name=current_target).pos
-                        target_quat = model.body(name=current_target).quat
-                    else:
-                        target_pos = init_position
-                        target_quat = init_quaternion
+                    # if current_target != "home":
+                    #     target_pos = model.body(name=current_target).pos
+                    #     target_quat = model.body(name=current_target).quat
+                    # else:
+                    #     target_pos = init_position
+                    #     target_quat = init_quaternion
 
                     if np.isnan(xi_cov).any():
                         xi_cov = xi_cov_init
@@ -425,16 +463,22 @@ def run_cem_planner(
                         data.qpos[:num_dof],
                         data.qvel[:num_dof],
                         data.qacc[:num_dof],
-                        target_pos,
-                        target_quat,
+                        target_pos_1,
+                        target_quat_1,
+                        target_pos_2,
+                        target_quat_2,
                         lamda_init,
                         s_init,
                         xi_samples
                     )
 
                     # Check target convergence
-                    current_cost_g = np.linalg.norm(data.site_xpos[cem.tcp_id] - target_pos)   
-                    current_cost_r = quaternion_distance(data.xquat[cem.hande_id], target_quat)
+                    # current_cost_g = np.linalg.norm(data.site_xpos[cem.tcp_id] - target_pos)   
+                    # current_cost_r = quaternion_distance(data.xquat[cem.hande_id], target_quat)
+                    # current_cost = np.round(cost, 2)
+
+                    current_cost_g = (np.linalg.norm(data.site_xpos[cem.tcp_id] - target_pos_1) + np.linalg.norm(data.site_xpos[cem.tcp_id_2] - target_pos_2))/2  
+                    current_cost_r = (quaternion_distance(data.xquat[cem.hande_id], target_quat_1) + quaternion_distance(data.xquat[cem.hande_id_2], target_quat_2))/2    
                     current_cost = np.round(cost, 2)
                     
                     if current_cost_g < position_threshold and current_cost_r < rotation_threshold:
@@ -443,15 +487,21 @@ def run_cem_planner(
                         target_reached = False
 
                     if target_reached:
-                        if target_idx == len(target_names) - 1: #At last target
+                        if target_idx == len(target_positions_1) - 1: #At last target
                             if stop_at_final_target:
                                 data.qvel[:num_dof] = np.zeros(num_dof)
-                            else:
-                                target_idx = 0
-                                current_target = target_names[target_idx]
+                            # else:
+                            #     target_idx = -1
+                                # current_target = target_names[target_idx]
+                            
                         else:
                             target_idx += 1
-                            current_target = target_names[target_idx]
+                            
+                            model.body(name="target_0").pos = target_positions_1[target_idx]
+                            model.body(name="target_0").quat = target_rotations_1[target_idx]
+                            model.body(name="target_1").pos = target_positions_2[target_idx]
+                            model.body(name="target_1").quat = target_rotations_2[target_idx]
+                            # current_target = target_names[target_idx]
                     
 
                     #ACtivate  collision free IK if cost position/rotation is less than ik_threshold
@@ -464,7 +514,7 @@ def run_cem_planner(
                         #Collision Free IK
                         ik_solver = InverseKinematicsSolver(cem.model, data.qpos[:num_dof])
 
-                        ik_solver.set_target(target_pos, target_quat)
+                        ik_solver.set_target(target_pos_1, target_quat_1)
 
                         print("\n" + "-" * 10)
                         print(">>> COLLISION-FREE IK IS ACTIVATED <<<")
@@ -500,9 +550,9 @@ def run_cem_planner(
                     best_cost_fixed_point_residual_list.append(avg_fixed_res[:, idx_min])
                     
                     #if not any(np.allclose(pos_, target_pos) for pos_ in target_pos_list):
-                    target_pos_list.append(target_pos.copy())
+                    target_pos_list.append(target_pos_1.copy())
                     #if not any(np.allclose(quat_, target_quat) for quat_ in target_quat_list):
-                    target_quat_list.append(target_quat.copy())
+                    target_quat_list.append(target_quat_1.copy())
                     
                     
                     # Print status

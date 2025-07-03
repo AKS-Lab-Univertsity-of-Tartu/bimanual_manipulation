@@ -18,7 +18,7 @@ collision_free_ik_dt = 5*timestep
 #Customized parameters
 results = run_cem_planner(
     # CEM parameters
-    num_dof=6,
+    num_dof=12,
     num_batch=500,  # Use More samples for better optimization
     num_steps=20,     # Use More steps for longer planning horizon
     num_elite=0.05,   # Use More elite samples for better convergence #Int(num_elite*num_batch) is used to select elite samples
@@ -40,7 +40,7 @@ results = run_cem_planner(
     show_contact_points=True,
     
     # Initial configuration
-    initial_qpos=[1.5, -1.8, 1.75, -1.25, -1.6, 0],
+    initial_qpos=[1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0],
     
     # Target sequence
     target_names=target_names,
