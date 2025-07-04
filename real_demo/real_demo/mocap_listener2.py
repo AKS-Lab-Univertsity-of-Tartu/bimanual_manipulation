@@ -23,6 +23,8 @@ class MocapListener(Node):
             depth=1
         )
 
+        self.use_hardware = False
+
         # Initialize robot connection
         self.rtde_c_1 = None
         self.rtde_r_1 = None
@@ -32,26 +34,28 @@ class MocapListener(Node):
 
         self.num_dof = 12
         self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
-        
-        try:
-            self.rtde_c_1 = RTDEControl("192.168.0.120")
-            self.rtde_r_1 = RTDEReceive("192.168.0.120")
 
-            self.rtde_c_2 = RTDEControl("192.168.0.124")
-            self.rtde_r_2 = RTDEReceive("192.168.0.124")
-            print("Connection with UR5e established.")
-        except Exception as e:
-            print(f"Could not connect to robot: {e}")
-            rclpy.shutdown()
-            return
+        if self.use_hardware:
+            try:
+                self.rtde_c_1 = RTDEControl("192.168.0.120")
+                self.rtde_r_1 = RTDEReceive("192.168.0.120")
 
-        # Move to initial position
-        self.move_to_start()
+                self.rtde_c_2 = RTDEControl("192.168.0.124")
+                self.rtde_r_2 = RTDEReceive("192.168.0.124")
+                print("Connection with UR5e established.")
+            except Exception as e:
+                print(f"Could not connect to robot: {e}")
+                rclpy.shutdown()
+                return
+
+            # Move to initial position
+            self.move_to_start()
         
         # Initialize MuJoCo model and data
         model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
+        self.data.qpos[:self.num_dof] = self.init_joint_position
         
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
@@ -78,7 +82,7 @@ class MocapListener(Node):
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
-        
+
         # Setup subscribers
         self.subscription_object1 = self.create_subscription(
             PoseStamped,
@@ -103,15 +107,16 @@ class MocapListener(Node):
         print("Moved to initial pose.")
 
     def close_connection(self):
-        """Cleanup robot connection"""
-        if self.rtde_c_1:
-            self.rtde_c_1.speedStop()
-            self.rtde_c_1.disconnect()
+        if self.use_hardware:
+            """Cleanup robot connection"""
+            if self.rtde_c_1:
+                self.rtde_c_1.speedStop()
+                self.rtde_c_1.disconnect()
 
-        if self.rtde_c_2:
-            self.rtde_c_2.speedStop()
-            self.rtde_c_2.disconnect()
-        print("Disconnected from UR5 Robot")
+            if self.rtde_c_2:
+                self.rtde_c_2.speedStop()
+                self.rtde_c_2.disconnect()
+            print("Disconnected from UR5 Robot")
 
     def object1_callback(self, msg):
         """Callback for target object pose updates"""
@@ -132,16 +137,20 @@ class MocapListener(Node):
     def control_loop(self):
         """Main control loop running at fixed interval"""
         start_time = time.time()
-        
-        # Get current state
-        current_pos_1 = np.array(self.rtde_r_1.getActualQ())
-        current_vel_1 = np.array(self.rtde_r_1.getActualQd())
 
-        current_pos_2 = np.array(self.rtde_r_2.getActualQ())
-        current_vel_2 = np.array(self.rtde_r_2.getActualQd())
+        if self.use_hardware:
+            # Get current state
+            current_pos_1 = np.array(self.rtde_r_1.getActualQ())
+            current_vel_1 = np.array(self.rtde_r_1.getActualQd())
 
-        current_pos = np.concatenate((current_pos_1, current_pos_2), axis=None)
-        current_vel = np.concatenate((current_vel_1, current_vel_2), axis=None)
+            current_pos_2 = np.array(self.rtde_r_2.getActualQ())
+            current_vel_2 = np.array(self.rtde_r_2.getActualQd())
+
+            current_pos = np.concatenate((current_pos_1, current_pos_2), axis=None)
+            current_vel = np.concatenate((current_vel_1, current_vel_2), axis=None)
+        else:
+            current_pos = self.data.qpos[:self.planner.num_dof]
+            current_vel = self.data.qvel[:self.planner.num_dof]
         
         # Update MuJoCo state
         self.data.qpos[:self.planner.num_dof] = current_pos
