@@ -22,10 +22,10 @@ class run_cem_planner:
                  maxiter_cem=1, maxiter_projection=5, w_pos=3.0, w_rot=0.5, 
                  w_col=500.0, num_elite=0.05, timestep=0.05,
                  position_threshold=0.06, rotation_threshold=0.1,
-                 ik_pos_thresh=None, ik_rot_thresh=None, 
+                 ik_pos_thresh=0.06, ik_rot_thresh=0.1, 
                  collision_free_ik_dt=0.5, inference=False, rnn=None,
-                 max_joint_pos=None, max_joint_vel=None, 
-                 max_joint_acc=None, max_joint_jerk=None,
+                 max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
+                 max_joint_acc=2.0, max_joint_jerk=4.0,
                  device='cuda'):
         
         # Initialize parameters
