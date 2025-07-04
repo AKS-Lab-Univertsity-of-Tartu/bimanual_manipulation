@@ -30,150 +30,6 @@ from ik_based_planner.ik_solver import InverseKinematicsSolver
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {device} device")
 
-class MuJoCoPointCloudGenerator:
-    def __init__(self, model, cam_name="camera1", height=480, width=640, output_dir="pcd_data_simulation"):
-        self.model = model
-        self.cam_name = cam_name
-        self.height = height
-        self.width = width
-        self.output_dir = output_dir
-        
-        # Get camera ID
-        try:
-            self.cam_id = model.camera(cam_name).id
-        except:
-            raise ValueError(f"Camera '{cam_name}' not found in model")
-        
-        # Initialize renderer
-        self.renderer = mujoco.Renderer(model, height=height, width=width)
-        
-        # Calculate camera intrinsics
-        fovy = model.cam_fovy[self.cam_id]
-        self.f = height / (2 * np.tan(np.deg2rad(fovy / 2)))
-        self.cx, self.cy = width / 2, height / 2
-        
-        # Create meshgrids for projection
-        self.i, self.j = np.meshgrid(np.arange(width), np.arange(height), indexing='xy')
-        
-        # Create output directory
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Accumulation buffers
-        self.accumulated_points = np.empty((0, 3))
-        self.accumulated_colors = np.empty((0, 3))
-        
-        print(f"Initialized point cloud generator with camera '{cam_name}'")
-
-    def generate_point_cloud(self, data, max_depth=10.0, downsample_factor=1):
-        """Generate point cloud from current scene"""
-        mujoco.mj_forward(self.model, data)
-        self.renderer.update_scene(data, camera=self.cam_name)
-
-        # Render RGB and depth
-        self.renderer.enable_depth_rendering()
-        depth = self.renderer.render()
-        self.renderer.disable_depth_rendering()
-        rgb = self.renderer.render()
-
-        assert depth.shape[:2] == rgb.shape[:2], \
-            f"Mismatch: depth.shape={depth.shape}, rgb.shape={rgb.shape}"
-
-        H, W = depth.shape
-        z = depth
-
-        if downsample_factor > 1:
-            z = z[::downsample_factor, ::downsample_factor]
-            rgb = rgb[::downsample_factor, ::downsample_factor, :]
-
-        H, W = z.shape
-
-        # Generate pixel grid
-        i, j = np.meshgrid(np.arange(W), np.arange(H))
-        i = i.astype(np.float32)
-        j = j.astype(np.float32)
-
-        x = (i - self.cx) * z / self.f
-        y = (j - self.cy) * z / self.f
-
-        points_cam = np.stack((x, -y, -z), axis=-1).reshape(-1, 3)
-
-        # Transform to world coordinates
-        cam_pos = data.cam_xpos[self.cam_id]
-        cam_mat = data.cam_xmat[self.cam_id].reshape(3, 3)
-        points_world = (cam_mat @ points_cam.T).T + cam_pos
-
-        # Flatten RGB
-        rgb_flat = rgb.reshape(-1, 3)
-
-        # Filter valid points
-        valid_mask = ~(np.isnan(points_world).any(axis=1) | np.isinf(points_world).any(axis=1))
-        valid_mask &= np.abs(points_world[:, 2]) < max_depth
-        valid_mask &= z.flatten() > 0.01
-
-        points = points_world[valid_mask]
-        colors = rgb_flat[valid_mask].astype(np.uint8)
-
-        return points, colors
-
-
-    def accumulate_point_cloud(self, data, max_depth=10.0, downsample_factor=1):
-        """Generate and accumulate point cloud"""
-        points, colors = self.generate_point_cloud(data, max_depth, downsample_factor)
-        
-        # Append to accumulated buffers
-        self.accumulated_points = np.vstack((self.accumulated_points, points))
-        self.accumulated_colors = np.vstack((self.accumulated_colors, colors))
-        
-        return points, colors
-
-    def deduplicate_points(self, points, colors, threshold=0.01):
-        """Merge nearby points"""
-        if len(points) == 0:
-            return points, colors
-            
-        nbrs = NearestNeighbors(radius=threshold).fit(points)
-        clusters = nbrs.radius_neighbors(points, return_distance=False)
-        
-        unique_points = []
-        unique_colors = []
-        visited = set()
-        
-        for i, cluster in enumerate(clusters):
-            if i not in visited:
-                cluster_points = points[cluster]
-                cluster_colors = colors[cluster]
-                unique_points.append(np.mean(cluster_points, axis=0))
-                unique_colors.append(np.mean(cluster_colors, axis=0))
-                visited.update(cluster)
-                
-        return np.array(unique_points), np.array(unique_colors)
-
-    def save_accumulated_pcd(self, filename="accumulated.pcd", deduplicate=True):
-        """Save all accumulated points as a single PCD file"""
-        if len(self.accumulated_points) == 0:
-            print("Warning: No points accumulated")
-            return None
-            
-        points = self.accumulated_points
-        colors = self.accumulated_colors
-        
-        if deduplicate:
-            points, colors = self.deduplicate_points(points, colors)
-            
-        output_path = os.path.join(self.output_dir, filename)
-        pcd_o3d = o3d.geometry.PointCloud()
-        pcd_o3d.points = o3d.utility.Vector3dVector(points)
-        pcd_o3d.colors = o3d.utility.Vector3dVector(colors / 255.0)
-        o3d.io.write_point_cloud(output_path, pcd_o3d)
-        
-        print(f"Saved accumulated point cloud with {len(points)} points to {output_path}")
-        return output_path
-
-    def reset_accumulation(self):
-        """Clear accumulated points"""
-        self.accumulated_points = np.empty((0, 3))
-        self.accumulated_colors = np.empty((0, 3))
-
 def robust_scale(input_nn: torch.Tensor) -> torch.Tensor:
     """Normalize input using median and IQR"""
     inp_median_ = torch.median(input_nn, dim=0).values
@@ -187,11 +43,6 @@ def robust_scale(input_nn: torch.Tensor) -> torch.Tensor:
     inp_norm = (input_nn - inp_median_) / inp_iqr_
     return inp_norm
 
-@partial(jax.jit, static_argnames=['nvar', 'num_batch'])
-def compute_xi_samples(key, xi_mean, xi_cov, nvar, num_batch):
-    key, subkey = jax.random.split(key)
-    xi_samples = jax.random.multivariate_normal(key, xi_mean, xi_cov+0.003*jnp.identity(nvar), (num_batch, ))
-    return xi_samples, key
 
 def load_mlp_projection_model(num_feature, rnn_type, cem, maxiter_projection, device='cuda'):
     enc_inp_dim = num_feature
@@ -314,9 +165,7 @@ def run_cem_planner(
     data.qpos[:num_dof] = jnp.array(initial_qpos)
     mujoco.mj_forward(model, data)
 
-    # Initialize point cloud generator if enabled
-    if generate_pcd:
-        pcd_gen = MuJoCoPointCloudGenerator(model=model, cam_name=cam_name, output_dir=data_dir)
+    
 
     # Initialize CEM variables
     xi_mean_single = jnp.zeros(cem.nvar_single)
@@ -390,28 +239,6 @@ def run_cem_planner(
                 while viewer_.is_running():
                     timestep_counter += 1
                     start_time = time.time()
-                    
-                    # Point cloud generation
-                    if generate_pcd and timestep_counter % pcd_interval == 0:
-                        if accumulate_pcd:
-                            pcd_gen.accumulate_point_cloud(data, downsample_factor=2)
-                        else:
-                            points, colors = pcd_gen.generate_point_cloud(data)
-                            filename = f"pcd_frame_{timestep_counter:04d}.pcd"
-                            pcd_gen.save_pcd_binary(points, colors, filename)
-
-                    # Main CEM planning loop
-                    # target_pos = model.body(name=current_target).pos if current_target != "home" else data.site_xpos[model.site(name="tcp").id].copy()
-                    # target_quat = model.body(name=current_target).quat if current_target != "home" else data.xquat[model.body(name="hande").id].copy()
-                    
-
-                    # Determine target position and orientation
-                    # if current_target != "home":
-                    #     target_pos = model.body(name=current_target).pos
-                    #     target_quat = model.body(name=current_target).quat
-                    # else:
-                    #     target_pos = init_position
-                    #     target_quat = init_quaternion
 
                     if np.isnan(xi_cov).any():
                         xi_cov = xi_cov_init
