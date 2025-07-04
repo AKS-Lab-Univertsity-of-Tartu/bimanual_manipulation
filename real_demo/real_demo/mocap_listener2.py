@@ -2,6 +2,9 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
+from ament_index_python.packages import get_package_share_directory
+
+
 import os
 import time
 import numpy as np
@@ -21,13 +24,21 @@ class MocapListener(Node):
         )
 
         # Initialize robot connection
-        self.rtde_c = None
-        self.rtde_r = None
-        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0.0]
+        self.rtde_c_1 = None
+        self.rtde_r_1 = None
+
+        self.rtde_c_2 = None
+        self.rtde_r_2 = None
+
+        self.num_dof = 12
+        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
         
         try:
-            self.rtde_c = RTDEControl("192.168.0.120")
-            self.rtde_r = RTDEReceive("192.168.0.120")
+            self.rtde_c_1 = RTDEControl("192.168.0.120")
+            self.rtde_r_1 = RTDEReceive("192.168.0.120")
+
+            self.rtde_c_2 = RTDEControl("192.168.0.124")
+            self.rtde_r_2 = RTDEReceive("192.168.0.124")
             print("Connection with UR5e established.")
         except Exception as e:
             print(f"Could not connect to robot: {e}")
@@ -38,14 +49,15 @@ class MocapListener(Node):
         self.move_to_start()
         
         # Initialize MuJoCo model and data
-        self.model = mujoco.MjModel.from_xml_path("path_to_your_model.xml")
+        model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
+        self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
         
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
             model=self.model,
             data=self.data,
-            num_dof=6,
+            num_dof=12,
             num_batch=500,
             num_steps=20,
             maxiter_cem=1,
@@ -86,14 +98,19 @@ class MocapListener(Node):
 
     def move_to_start(self):
         """Move robot to initial joint position"""
-        self.rtde_c.moveJ(self.init_joint_position, asynchronous=False)
+        self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        self.rtde_c_2.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         print("Moved to initial pose.")
 
     def close_connection(self):
         """Cleanup robot connection"""
-        if self.rtde_c:
-            self.rtde_c.speedStop()
-            self.rtde_c.disconnect()
+        if self.rtde_c_1:
+            self.rtde_c_1.speedStop()
+            self.rtde_c_1.disconnect()
+
+        if self.rtde_c_2:
+            self.rtde_c_2.speedStop()
+            self.rtde_c_2.disconnect()
         print("Disconnected from UR5 Robot")
 
     def object1_callback(self, msg):
@@ -117,19 +134,26 @@ class MocapListener(Node):
         start_time = time.time()
         
         # Get current state
-        current_pos = np.array(self.rtde_r.getActualQ())
-        current_vel = np.array(self.rtde_r.getActualQd())
+        current_pos_1 = np.array(self.rtde_r_1.getActualQ())
+        current_vel_1 = np.array(self.rtde_r_1.getActualQd())
+
+        current_pos_2 = np.array(self.rtde_r_2.getActualQ())
+        current_vel_2 = np.array(self.rtde_r_2.getActualQd())
+
+        current_pos = np.concatenate((current_pos_1, current_pos_2), axis=None)
+        current_vel = np.concatenate((current_vel_1, current_vel_2), axis=None)
         
         # Update MuJoCo state
         self.data.qpos[:self.planner.num_dof] = current_pos
         mujoco.mj_forward(self.model, self.data)
         
         # Compute control
-        thetadot, cost, cost_g, cost_c = self.planner.compute_control(
-            current_pos, current_vel)
+        # thetadot, cost, cost_g, cost_c = self.planner.compute_control(
+        #     current_pos, current_vel)
         
         # Send velocity command
-        self.rtde_c.speedJ(thetadot, acceleration=1.4, time=0.05)
+        # self.rtde_c.speedJ(thetadot[:self.planner.num_dof//2], acceleration=1.4, time=0.05)
+        # self.rtde_c.speedJ(thetadot[self.planner.num_dof//2:], acceleration=1.4, time=0.05)
         
         # Update viewer
         self.viewer.sync()

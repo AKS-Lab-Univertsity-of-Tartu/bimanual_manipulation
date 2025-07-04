@@ -11,29 +11,38 @@ data_files=[
         ('share/' + package_name, ['package.xml']),
     ]
 
-for dirpath, dirnames, filenames in os.walk('ur5e_hande_mjx'):
-    if filenames:
-        files = [os.path.join(dirpath, f) for f in filenames]
-        install_path = os.path.join('share', package_name, dirpath)
-        data_files.append((install_path, files))
+folders = ['ur5e_hande_mjx', 'urx', 'mj_planner', 'json', 'ik_based_planner', 'collision_free_ik', 'sampling_based_planner']
 
-for dirpath, dirnames, filenames in os.walk('urx'):
-    if filenames:
-        files = [os.path.join(dirpath, f) for f in filenames]
-        install_path = os.path.join('share', package_name, dirpath)
-        data_files.append((install_path, files))
+for folder in folders:
+    for dirpath, dirnames, filenames in os.walk(folder):
+        if filenames:
+            files = [os.path.join(dirpath, f) for f in filenames]
+            install_path = os.path.join('share', package_name, dirpath)
+            data_files.append((install_path, files))
 
-for dirpath, dirnames, filenames in os.walk('mj_planner'):
-    if filenames:
-        files = [os.path.join(dirpath, f) for f in filenames]
-        install_path = os.path.join('share', package_name, dirpath)
-        data_files.append((install_path, files))
+# for dirpath, dirnames, filenames in os.walk('ur5e_hande_mjx'):
+#     if filenames:
+#         files = [os.path.join(dirpath, f) for f in filenames]
+#         install_path = os.path.join('share', package_name, dirpath)
+#         data_files.append((install_path, files))
 
-for dirpath, dirnames, filenames in os.walk('json'):
-    if filenames:
-        files = [os.path.join(dirpath, f) for f in filenames]
-        install_path = os.path.join('share', package_name, dirpath)
-        data_files.append((install_path, files))
+# for dirpath, dirnames, filenames in os.walk('urx'):
+#     if filenames:
+#         files = [os.path.join(dirpath, f) for f in filenames]
+#         install_path = os.path.join('share', package_name, dirpath)
+#         data_files.append((install_path, files))
+
+# for dirpath, dirnames, filenames in os.walk('mj_planner'):
+#     if filenames:
+#         files = [os.path.join(dirpath, f) for f in filenames]
+#         install_path = os.path.join('share', package_name, dirpath)
+#         data_files.append((install_path, files))
+
+# for dirpath, dirnames, filenames in os.walk('json'):
+#     if filenames:
+#         files = [os.path.join(dirpath, f) for f in filenames]
+#         install_path = os.path.join('share', package_name, dirpath)
+#         data_files.append((install_path, files))
 
 setup(
     name=package_name,
@@ -50,6 +59,7 @@ setup(
     entry_points={
         'console_scripts': [
             'mocap_listener = real_demo.mocap_listener:main',
+            'mocap_listener2 = real_demo.mocap_listener2:main',
             'visualizer = real_demo.visualizer:main'
         ],
     },
