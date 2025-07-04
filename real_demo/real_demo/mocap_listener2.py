@@ -152,14 +152,16 @@ class MocapListener(Node):
             current_pos = self.data.qpos[:self.planner.num_dof]
             current_vel = self.data.qvel[:self.planner.num_dof]
         
-        # Update MuJoCo state
-        self.data.qpos[:self.planner.num_dof] = current_pos
-        mujoco.mj_forward(self.model, self.data)
+        
         
         # Compute control
         thetadot, cost, cost_g, cost_r, cost_c = self.planner.compute_control(
             current_pos, current_vel)
         
+        # Update MuJoCo state
+        
+        self.data.qvel[:self.planner.num_dof] = thetadot
+        mujoco.mj_step(self.model, self.data)
         # Send velocity command
         # self.rtde_c.speedJ(thetadot[:self.planner.num_dof//2], acceleration=1.4, time=0.05)
         # self.rtde_c.speedJ(thetadot[self.planner.num_dof//2:], acceleration=1.4, time=0.05)

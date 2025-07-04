@@ -179,8 +179,6 @@ class run_cem_planner:
             np.linalg.cholesky(self.xi_cov)
         except np.linalg.LinAlgError:
             self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))  
-
-        print(self.xi_mean, self.xi_cov)
         
         # Generate samples
         self.xi_samples, self.key = self.cem.compute_xi_samples(
@@ -255,18 +253,18 @@ class run_cem_planner:
         # Arm 1 control
         if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
             ik_solver_1 = InverseKinematicsSolver(
-                self.model, current_pos[:6], "tcp")
+                self.model, current_pos, "tcp")
             ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)
+            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[:self.num_dof//2]
         else:
             thetadot_1 = thetadot_cem[:6]
         
         # Arm 2 control
         if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
             ik_solver_2 = InverseKinematicsSolver(
-                self.model, current_pos[6:], "tcp_2")
+                self.model, current_pos, "tcp_2")
             ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
-            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)
+            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[:self.num_dof//2]
         else:
             thetadot_2 = thetadot_cem[6:]
 
