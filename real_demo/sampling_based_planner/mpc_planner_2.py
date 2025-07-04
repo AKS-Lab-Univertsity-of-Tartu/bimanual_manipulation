@@ -171,6 +171,17 @@ class run_cem_planner:
         if np.isnan(self.xi_cov).any():
             self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))
         
+        if np.isnan(self.xi_mean).any():
+
+            self.xi_mean = jnp.zeros(self.cem.nvar)
+
+        try:
+            np.linalg.cholesky(self.xi_cov)
+        except np.linalg.LinAlgError:
+            self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))  
+
+        print(self.xi_mean, self.xi_cov)
+        
         # Generate samples
         self.xi_samples, self.key = self.cem.compute_xi_samples(
             self.key, self.xi_mean, self.xi_cov)

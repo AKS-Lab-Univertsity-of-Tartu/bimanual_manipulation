@@ -148,8 +148,8 @@ class MocapListener(Node):
         mujoco.mj_forward(self.model, self.data)
         
         # Compute control
-        # thetadot, cost, cost_g, cost_c = self.planner.compute_control(
-        #     current_pos, current_vel)
+        thetadot, cost, cost_g, cost_r, cost_c = self.planner.compute_control(
+            current_pos, current_vel)
         
         # Send velocity command
         # self.rtde_c.speedJ(thetadot[:self.planner.num_dof//2], acceleration=1.4, time=0.05)
