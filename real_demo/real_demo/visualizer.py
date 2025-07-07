@@ -17,9 +17,9 @@ from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
-RECORD_DATA = False
-PLAYBACK = True
-idx = "1".zfill(3)
+RECORD_DATA = True
+PLAYBACK = False
+idx = "0".zfill(3)
 
 
 class Visualizer(Node):

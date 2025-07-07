@@ -22,7 +22,7 @@ class cem_planner():
 
 	def __init__(self, num_dof=None, num_batch=None, num_steps=None, timestep=None, maxiter_cem=None, num_elite=None, w_pos=None, w_rot=None, w_col=None, 
 			     maxiter_projection=None, max_joint_pos = None ,max_joint_vel = None, 
-				 max_joint_acc = None, max_joint_jerk = None):
+				 max_joint_acc = None, max_joint_jerk = None, table_1_pos=None, table_2_pos=None):
 		super(cem_planner, self).__init__()
 	 
 		self.num_dof = num_dof
@@ -154,6 +154,10 @@ class cem_planner():
 		self.model = mujoco.MjModel.from_xml_path(self.model_path)
 		self.data = mujoco.MjData(self.model)
 		self.model.opt.timestep = self.t
+
+		if table_1_pos and table_2_pos:
+			self.model.body(name='table_1').pos = table_1_pos
+			self.model.body(name='table_2').pos = table_2_pos
 
 		self.mjx_model = mjx.put_model(self.model)
 		self.mjx_data = mjx.put_data(self.model, self.data)

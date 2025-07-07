@@ -7,6 +7,7 @@ from ament_index_python.packages import get_package_share_directory
 
 import os
 import time
+import json
 import numpy as np
 import mujoco
 from mujoco import viewer
@@ -14,6 +15,9 @@ from mujoco import viewer
 from sampling_based_planner.mpc_planner_2 import run_cem_planner
 from rtde_control import RTDEControlInterface as RTDEControl
 from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+PACKAGE_DIR = get_package_share_directory('real_demo')
+
 
 class MocapListener(Node):
     def __init__(self):
@@ -23,7 +27,7 @@ class MocapListener(Node):
             depth=1
         )
 
-        self.use_hardware = False
+        self.use_hardware = True
 
         # Initialize robot connection
         self.rtde_c_1 = None
@@ -50,12 +54,23 @@ class MocapListener(Node):
 
             # Move to initial position
             self.move_to_start()
+
+        setup = json.load(open(os.path.join(PACKAGE_DIR, 'json', 'setup', f'setup_000.json'), "r"))
         
         # Initialize MuJoCo model and data
         model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
         self.model = mujoco.MjModel.from_xml_path(model_path)
+        self.model.opt.timestep = 0.1
         self.data = mujoco.MjData(self.model)
         self.data.qpos[:self.num_dof] = self.init_joint_position
+
+        table_1_pos = setup['table1']
+        table_2_pos = setup['table2']
+
+        self.model.body(name='table_1').pos = table_1_pos
+        # self.model.body(name='table1_marker').pos = setup['marker1']
+        self.model.body(name='table_2').pos = table_2_pos
+        # self.model.body(name='table2_marker').pos = setup['marker2']
         
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
@@ -63,16 +78,18 @@ class MocapListener(Node):
             data=self.data,
             num_dof=12,
             num_batch=500,
-            num_steps=20,
+            num_steps=15,
             maxiter_cem=1,
             maxiter_projection=5,
             w_pos=3.0,
             w_rot=0.5,
             w_col=500.0,
             num_elite=0.05,
-            timestep=0.05,
+            timestep=0.1,
             position_threshold=0.06,
-            rotation_threshold=0.1
+            rotation_threshold=0.1,
+            table_1_pos=table_1_pos,
+            table_2_pos=table_2_pos
         )
         
         # Setup viewer
@@ -90,6 +107,12 @@ class MocapListener(Node):
             self.object1_callback,
             qos_profile 
         )
+        self.subscription_object1 = self.create_subscription(
+            PoseStamped,
+            '/vrpn_mocap/table1/pose',
+            self.object2_callback,
+            qos_profile 
+        )
         self.subscription_obstacle1 = self.create_subscription(
             PoseStamped,
             '/vrpn_mocap/obstacle1/pose',
@@ -98,7 +121,7 @@ class MocapListener(Node):
         )
         
         # Setup control timer
-        self.timer = self.create_timer(0.05, self.control_loop)
+        self.timer = self.create_timer(0.1, self.control_loop)
 
     def move_to_start(self):
         """Move robot to initial joint position"""
@@ -121,10 +144,22 @@ class MocapListener(Node):
     def object1_callback(self, msg):
         """Callback for target object pose updates"""
         pose = msg.pose
-        target_pos = [-pose.position.x, -pose.position.y, pose.position.z]
-        target_rot = [pose.orientation.w, pose.orientation.x, 
-                      pose.orientation.y, pose.orientation.z]
-        self.planner.update_target(target_pos, target_rot)
+        target_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z+0.1])
+        target_rot = np.array([0.0, 1.0, 0, 0])
+        
+        self.model.body(name='target_0').pos = target_pos
+        self.model.body(name='target_0').quat = target_rot
+        self.planner.update_targets(target_idx=1, target_pos=target_pos, target_rot = target_rot)
+
+    def object2_callback(self, msg):
+        """Callback for target object pose updates"""
+        pose = msg.pose
+        target_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z+0.1])
+        target_rot = np.array([0.0, 1.0, 0, 0])
+        
+        self.model.body(name='target_1').pos = target_pos
+        self.model.body(name='target_1').quat = target_rot
+        self.planner.update_targets(target_idx=2, target_pos=target_pos, target_rot = target_rot)
 
     def obstacle1_callback(self, msg):
         """Callback for obstacle pose updates"""
@@ -132,7 +167,7 @@ class MocapListener(Node):
         obstacle_pos = [-pose.position.x, -pose.position.y, pose.position.z]
         obstacle_rot = [pose.orientation.w, pose.orientation.x, 
                         pose.orientation.y, pose.orientation.z]
-        self.planner.update_obstacle(obstacle_pos, obstacle_rot)
+        # self.planner.update_obstacle(obstacle_pos, obstacle_rot)
 
     def control_loop(self):
         """Main control loop running at fixed interval"""
@@ -158,13 +193,18 @@ class MocapListener(Node):
         thetadot, cost, cost_g, cost_r, cost_c = self.planner.compute_control(
             current_pos, current_vel)
         
-        # Update MuJoCo state
-        
-        self.data.qvel[:self.planner.num_dof] = thetadot
-        mujoco.mj_step(self.model, self.data)
-        # Send velocity command
-        # self.rtde_c.speedJ(thetadot[:self.planner.num_dof//2], acceleration=1.4, time=0.05)
-        # self.rtde_c.speedJ(thetadot[self.planner.num_dof//2:], acceleration=1.4, time=0.05)
+        if self.use_hardware:
+            # Send velocity command
+            self.rtde_c_1.speedJ(thetadot[:self.planner.num_dof//2], acceleration=1.4, time=0.1)
+            self.rtde_c_2.speedJ(thetadot[self.planner.num_dof//2:], acceleration=1.4, time=0.1)
+
+            # Update MuJoCo state
+            current_pos = np.concatenate((np.array(self.rtde_r_1.getActualQ()), np.array(self.rtde_r_2.getActualQ())), axis=None)
+            self.data.qpos[:self.planner.num_dof] = current_pos
+            mujoco.mj_forward(self.model, self.data)
+        else:
+            self.data.qvel[:self.planner.num_dof] = thetadot
+            mujoco.mj_step(self.model, self.data)
         
         # Update viewer
         self.viewer.sync()

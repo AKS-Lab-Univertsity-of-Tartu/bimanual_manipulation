@@ -26,7 +26,7 @@ class run_cem_planner:
                  collision_free_ik_dt=0.5, inference=False, rnn=None,
                  max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
                  max_joint_acc=2.0, max_joint_jerk=4.0,
-                 device='cuda'):
+                 device='cuda', table_1_pos=None, table_2_pos=None):
         
         # Initialize parameters
         self.model = model
@@ -64,7 +64,9 @@ class run_cem_planner:
             max_joint_pos=max_joint_pos,
             max_joint_vel=max_joint_vel,
             max_joint_acc=max_joint_acc,
-            max_joint_jerk=max_joint_jerk
+            max_joint_jerk=max_joint_jerk,
+            table_1_pos=table_1_pos,
+            table_2_pos=table_2_pos
         )
         
         # Initialize CEM variables
@@ -148,12 +150,14 @@ class run_cem_planner:
         
         return torch.cat([variable_multi_dof, variable_single_dof], dim=1)
 
-    def update_targets(self, target_pos_1, target_rot_1, target_pos_2, target_rot_2):
+    def update_targets(self, target_idx=1, target_pos=None, target_rot=None):
         """Update target positions and rotations for both arms"""
-        self.target_pos_1 = target_pos_1
-        self.target_rot_1 = target_rot_1
-        self.target_pos_2 = target_pos_2
-        self.target_rot_2 = target_rot_2
+        if target_idx==1:
+            self.target_pos_1 = target_pos
+            self.target_rot_1 = target_rot
+        elif target_idx==2:
+            self.target_pos_2 = target_pos
+            self.target_rot_2 = target_rot
         
     def update_obstacle(self, obstacle_pos, obstacle_rot):
         """Update obstacle position and rotation"""
