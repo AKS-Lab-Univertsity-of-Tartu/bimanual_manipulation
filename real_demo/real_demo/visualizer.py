@@ -5,7 +5,7 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 import os
 import json
-
+import csv
 import time
 
 import mujoco
@@ -17,9 +17,11 @@ from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
-RECORD_DATA = True
-PLAYBACK = False
-idx = "0".zfill(3)
+USE_HARDWARE = False
+
+RECORD_DATA = False
+PLAYBACK = True
+idx = "1".zfill(3)
 
 
 class Visualizer(Node):
@@ -36,17 +38,20 @@ class Visualizer(Node):
         model_path = os.path.join(PACKAGE_DIR, 'ur5e_hande_mjx', 'scene.xml')
 
         self.pathes = {
-            "setup": os.path.join(PACKAGE_DIR, 'json', 'setup', f'setup_{idx}.json'),
-            "trajectory": os.path.join(PACKAGE_DIR, 'json', 'trajectory', f'trajectory_{idx}.json'),
+            "setup": os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_{idx}.csv'),
+            "trajectory": os.path.join(PACKAGE_DIR, 'data', 'manual', 'trajectory', f'trajectory_{idx}.csv'),
         }
         if RECORD_DATA:
-            self.json_files = dict()
-            for key, value in self.pathes.items():
-                self.json_files[key] = open(value, "w+")
+            self.data_files = dict()
+            self.data_files['setup'] = csv.DictWriter(open(self.pathes['setup'], "w+"), fieldnames=['table_1', 'marker_1', 'table_2', 'marker_2'])
+            self.data_files['trajectory'] = csv.DictWriter(open(self.pathes['trajectory'], "w+"), fieldnames=['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
+            self.data_files['setup'].writeheader()
+            self.data_files['trajectory'].writeheader()
+
         elif PLAYBACK:
-            self.json_files = dict()
+            self.data_files = dict()
             for key, value in self.pathes.items():
-                self.json_files[key] = open(value, "r")
+                self.data_files[key] = list(csv.DictReader(open(value, "r")))
 
 
         self.model = mujoco.MjModel.from_xml_path(model_path)
@@ -63,11 +68,12 @@ class Visualizer(Node):
 
         if not PLAYBACK:
 
-            self.rtde_c_1 = RTDEControl("192.168.0.120")
-            self.rtde_r_1 = RTDEReceive("192.168.0.120")
+            if USE_HARDWARE:
+                self.rtde_c_1 = RTDEControl("192.168.0.120")
+                self.rtde_r_1 = RTDEReceive("192.168.0.120")
 
-            self.rtde_c_2 = RTDEControl("192.168.0.124")
-            self.rtde_r_2 = RTDEReceive("192.168.0.124")
+                self.rtde_c_2 = RTDEControl("192.168.0.124")
+                self.rtde_r_2 = RTDEReceive("192.168.0.124")
 
             self.subscription_table1 = self.create_subscription(
                 PoseStamped,
@@ -99,23 +105,30 @@ class Visualizer(Node):
 
             self.timer = self.create_timer(0.05, self.view_model)
         else:
-            self.setup = json.load(self.json_files['setup'])
+            self.setup = self.data_files['setup'][0]
 
-            self.model.body(name='table_1').pos = self.setup['table1']
-            self.model.body(name='table1_marker').pos = self.setup['marker1']
-            self.model.body(name='table_2').pos = self.setup['table2']
-            self.model.body(name='table2_marker').pos = self.setup['marker2']
+            self.model.body(name='table_1').pos = json.loads(self.setup['table_1'])
+            self.model.body(name='table1_marker').pos = json.loads(self.setup['marker_1'])
+            self.model.body(name='table_2').pos = json.loads(self.setup['table_2'])
+            self.model.body(name='table2_marker').pos = json.loads(self.setup['marker_2'])
 
-            self.trajectory = json.load(self.json_files['trajectory'])
             self.step_idx = 0
             self.timer = self.create_timer(0.05, self.view_playback)
 
     def view_model(self):
         step_start = time.time()
-        theta_1 = self.rtde_r_1.getActualQ()
-        theta_2 = self.rtde_r_2.getActualQ()
 
-        theta = np.concatenate((theta_1, theta_2), axis=None)
+        if USE_HARDWARE:
+            theta_1 = self.rtde_r_1.getActualQ()
+            theta_2 = self.rtde_r_2.getActualQ()
+            theta = np.concatenate((theta_1, theta_2), axis=None)
+
+            thetadot_1 = self.rtde_r_1.getActualQd()
+            thetadot_2 = self.rtde_r_2.getActualQd()
+            thetadot = np.concatenate((thetadot_1, thetadot_2), axis=None)
+        else:
+            theta = self.data.qpos[:12]
+            thetadot = self.data.qvel[:12]
 
         self.data.qpos[:12] = theta
 
@@ -123,7 +136,7 @@ class Visualizer(Node):
         self.viewer.sync()
 
         if RECORD_DATA:
-            self.record_data(theta=theta)
+            self.record_data(theta=theta, thetadot=thetadot)
 
         time_until_next_step = self.model.opt.timestep - (time.time() - step_start)
         if time_until_next_step > 0:
@@ -132,20 +145,26 @@ class Visualizer(Node):
     def view_playback(self):
         step_start = time.time()
 
-        theta = self.trajectory[self.step_idx]['theta']
+        theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
 
-        self.model.body(name='target_1').pos = self.trajectory[self.step_idx]['target_1']['position']
-        self.model.body(name='target_1').quat = self.trajectory[self.step_idx]['target_1']['orientation']
+        target_1 = json.loads(self.data_files['trajectory'][self.step_idx]['target_1'])
+        target_2 = json.loads(self.data_files['trajectory'][self.step_idx]['target_2'])
 
-        self.model.body(name='target_2').pos = self.trajectory[self.step_idx]['target_2']['position']
-        self.model.body(name='target_2').quat = self.trajectory[self.step_idx]['target_2']['orientation']
+        self.model.body(name='target_1').pos = target_1[:3]
+        self.model.body(name='target_1').quat = target_1[3:]
+
+        self.model.body(name='target_2').pos = target_2[:3]
+        self.model.body(name='target_2').quat = target_1[3:]
 
         self.data.qpos[:12] = theta
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
 
-        self.step_idx+=1
+        if self.step_idx < len(self.data_files['trajectory'])-1:
+            self.step_idx += 1
+        else:
+            self.step_idx = 0
 
         time_until_next_step = self.model.opt.timestep - (time.time() - step_start)
         if time_until_next_step > 0:
@@ -180,39 +199,28 @@ class Visualizer(Node):
         self.rtde_c_2.disconnect()
         print("Disconnected from UR5 Robot")
 
-    def record_data(self, theta):
-        timestep = time.time()
+    def record_data(self, theta, thetadot):
+        timestamp = time.time()
 
         setup = {
-            "table1": self.model.body(name='table_1').pos.tolist(),
-            "table2": self.model.body(name='table_2').pos.tolist(),
-            "marker1": self.model.body(name='table1_marker').pos.tolist(),
-            "marker2": self.model.body(name='table2_marker').pos.tolist(),
+            "table_1": str(self.model.body(name='table_1').pos.tolist()),
+            "marker_1": str(self.model.body(name='table1_marker').pos.tolist()),
+            "table_2": str(self.model.body(name='table_2').pos.tolist()),
+            "marker_2": str(self.model.body(name='table2_marker').pos.tolist()),
         }
+        self.data_files['setup'].writerow(setup)
 
-        self.json_files['setup'].seek(0)        # Go to start of file
-        self.json_files['setup'].truncate()     # Clear existing content
-        json.dump(setup, self.json_files['setup'], indent=2)
-        self.json_files['setup'].flush()  
+        target_1 = np.concatenate((self.model.body(name='target_1').pos.tolist(), self.model.body(name='target_1').quat.tolist()), axis=None)
+        target_2 = np.concatenate((self.model.body(name='target_2').pos.tolist(), self.model.body(name='target_2').quat.tolist()), axis=None)
 
         step = {
-            "timestep" : timestep,
-            "theta": theta.tolist(),
-            "target_1": {
-                "position": self.model.body(name='target_1').pos.tolist(),
-                "orientation": self.model.body(name='target_1').quat.tolist(),
-            },
-            "target_2": {
-                "position": self.model.body(name='target_2').pos.tolist(),
-                "orientation": self.model.body(name='target_2').quat.tolist(),
-            }
+            "timestamp" : timestamp,
+            "theta": str(theta.tolist()),
+            "thetadot": str(thetadot.tolist()),
+            "target_1": str(target_1.tolist()),
+            "target_2": str(target_2.tolist())
         }
-        self.trajectory.append(step)
-
-        self.json_files['trajectory'].seek(0)        # Go to start of file
-        self.json_files['trajectory'].truncate()     # Clear existing content
-        json.dump(self.trajectory, self.json_files['trajectory'], indent=2)
-        self.json_files['trajectory'].flush()  
+        self.data_files['trajectory'].writerow(step)
 
 
 
@@ -227,7 +235,7 @@ def main(args=None):
     except KeyboardInterrupt:
         print("Node interrupted with Ctrl+C")
     finally:
-        if not PLAYBACK:
+        if PLAYBACK==False and USE_HARDWARE==True:
             visualizer.close_connection()
         visualizer.destroy_node()
         rclpy.shutdown()

@@ -11,7 +11,7 @@ data_files=[
         ('share/' + package_name, ['package.xml']),
     ]
 
-folders = ['ur5e_hande_mjx', 'urx', 'mj_planner', 'json', 'ik_based_planner', 'collision_free_ik', 'sampling_based_planner']
+folders = ['ur5e_hande_mjx', 'urx', 'mj_planner', 'data', 'ik_based_planner', 'collision_free_ik', 'sampling_based_planner']
 
 for folder in folders:
     for dirpath, dirnames, filenames in os.walk(folder):

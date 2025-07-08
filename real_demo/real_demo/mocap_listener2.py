@@ -8,6 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 import os
 import time
 import json
+import csv
 import numpy as np
 import mujoco
 from mujoco import viewer
@@ -18,6 +19,8 @@ from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
+idx = '1'.zfill(3)
+
 
 class MocapListener(Node):
     def __init__(self):
@@ -27,7 +30,20 @@ class MocapListener(Node):
             depth=1
         )
 
-        self.use_hardware = True
+        self.use_hardware = False
+        self.record_data = True
+
+        if self.record_data:
+            self.pathes = {
+                "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{idx}.csv'),
+                "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'trajectory_{idx}.csv'),
+            }
+            self.data_files = dict()
+            for key, value in self.pathes.items():
+                self.data_files[key] = csv.writer(open(value, "w+"))
+
+            self.data_files['setup'].writerow(['table_1', 'marker_1', 'table_2', 'marker_2'])
+            self.data_files['trajectory'].writerow(['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
 
         # Initialize robot connection
         self.rtde_c_1 = None
@@ -55,7 +71,7 @@ class MocapListener(Node):
             # Move to initial position
             self.move_to_start()
 
-        setup = json.load(open(os.path.join(PACKAGE_DIR, 'json', 'setup', f'setup_000.json'), "r"))
+        setup = json.load(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.json'), "r"))
         
         # Initialize MuJoCo model and data
         model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
@@ -205,6 +221,9 @@ class MocapListener(Node):
         else:
             self.data.qvel[:self.planner.num_dof] = thetadot
             mujoco.mj_step(self.model, self.data)
+
+        if self.record_data:
+            pass
         
         # Update viewer
         self.viewer.sync()
