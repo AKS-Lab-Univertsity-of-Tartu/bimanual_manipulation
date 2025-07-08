@@ -21,7 +21,7 @@ USE_HARDWARE = False
 
 RECORD_DATA = False
 PLAYBACK = True
-idx = "1".zfill(3)
+idx = "2".zfill(3)
 
 
 class Visualizer(Node):
@@ -32,8 +32,9 @@ class Visualizer(Node):
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             depth=1
         )
-        self.init_joint_state = np.array([1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0])
+        self.init_joint_position = np.array([1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0])
         self.trajectory = list()
+        self.num_dof = 12
 
         model_path = os.path.join(PACKAGE_DIR, 'ur5e_hande_mjx', 'scene.xml')
 
@@ -58,13 +59,13 @@ class Visualizer(Node):
 
 
         self.model = mujoco.MjModel.from_xml_path(model_path)
-        self.model.opt.timestep = 0.05
+        self.model.opt.timestep = 0.1
         self.data = mujoco.MjData(self.model)
-        self.data.qpos[:12] = self.init_joint_state
+        self.data.qpos[:12] = self.init_joint_position
 
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        self.viewer.cam.lookat[:] = [0.0, 0.0, 0.8]  
+        self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]  
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
@@ -77,6 +78,7 @@ class Visualizer(Node):
 
                 self.rtde_c_2 = RTDEControl("192.168.0.124")
                 self.rtde_r_2 = RTDEReceive("192.168.0.124")
+                self.move_to_start()
 
             self.subscription_table1 = self.create_subscription(
                 PoseStamped,
@@ -106,9 +108,9 @@ class Visualizer(Node):
                 qos_profile 
             )
 
-            self.timer = self.create_timer(0.05, self.view_model)
+            self.timer = self.create_timer(self.model.opt.timestep, self.view_model)
         else:
-            self.setup = self.data_files['setup'][0]
+            self.setup = self.data_files['setup'][-1]
 
             self.model.body(name='table_1').pos = json.loads(self.setup['table_1'])
             self.model.body(name='table1_marker').pos = json.loads(self.setup['marker_1'])
@@ -116,7 +118,13 @@ class Visualizer(Node):
             self.model.body(name='table2_marker').pos = json.loads(self.setup['marker_2'])
 
             self.step_idx = 0
-            self.timer = self.create_timer(0.05, self.view_playback)
+            self.timer = self.create_timer(self.model.opt.timestep, self.view_playback)
+
+    def move_to_start(self):
+        """Move robot to initial joint position"""
+        self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        self.rtde_c_2.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
+        print("Moved to initial pose.")
 
     def view_model(self):
         step_start = time.time()
@@ -157,7 +165,7 @@ class Visualizer(Node):
         self.model.body(name='target_1').quat = target_1[3:]
 
         self.model.body(name='target_2').pos = target_2[:3]
-        self.model.body(name='target_2').quat = target_1[3:]
+        self.model.body(name='target_2').quat = target_2[3:]
 
         self.data.qpos[:12] = theta
 

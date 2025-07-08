@@ -18,11 +18,11 @@
         <geom name="center" pos="0 0 0" rgba="1 1 1 0.6" size="0.01 0.01 0.1" type="box" contype="0" conaffinity="0"/>
     </body>
 
-    <body name="table1_marker" pos="-0.496 -0.575 0" >
+    <body name="table1_marker" pos="-0.496 -0.575 0.05" >
         <geom name="table1_marker" pos="0 0 0" rgba="1 1 1 0.6" size="0.05 0.05 0.025" type="box" contype="0" conaffinity="0"/>
     </body>
 
-    <body name="table2_marker" pos="-0.951 0.695 0" >
+    <body name="table2_marker" pos="-0.951 0.695 0.05" >
         <geom name="table2_marker" pos="0 0 0" rgba="1 1 1 0.6" size="0.025 0.025 0.025" type="box" contype="0" conaffinity="0"/>
     </body>
 

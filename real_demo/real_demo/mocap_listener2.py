@@ -19,7 +19,7 @@ from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
-idx = '1'.zfill(3)
+idx = '2'.zfill(3)
 
 
 class MocapListener(Node):
@@ -30,7 +30,7 @@ class MocapListener(Node):
             depth=1
         )
 
-        self.use_hardware = False
+        self.use_hardware = True
         self.record_data_ = True
 
         if self.record_data_:
@@ -70,7 +70,7 @@ class MocapListener(Node):
             # Move to initial position
             self.move_to_start()
 
-        setup = list(csv.DictReader(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.csv'), "r")))[10]
+        setup = list(csv.DictReader(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.csv'), "r")))[-1]
         
         # Initialize MuJoCo model and data
         model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
@@ -110,7 +110,7 @@ class MocapListener(Node):
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        self.viewer.cam.lookat[:] = [0.0, 0.0, 0.8]  
+        self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]#[0.0, 0.0, 0.8]  
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
@@ -124,7 +124,7 @@ class MocapListener(Node):
         )
         self.subscription_object1 = self.create_subscription(
             PoseStamped,
-            '/vrpn_mocap/table1/pose',
+            '/vrpn_mocap/object2/pose',
             self.object2_callback,
             qos_profile 
         )
