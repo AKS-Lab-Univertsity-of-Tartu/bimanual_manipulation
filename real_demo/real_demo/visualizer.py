@@ -37,9 +37,12 @@ class Visualizer(Node):
 
         model_path = os.path.join(PACKAGE_DIR, 'ur5e_hande_mjx', 'scene.xml')
 
+        # folder = 'manual'
+        folder = 'planner'
+
         self.pathes = {
-            "setup": os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_{idx}.csv'),
-            "trajectory": os.path.join(PACKAGE_DIR, 'data', 'manual', 'trajectory', f'trajectory_{idx}.csv'),
+            "setup": os.path.join(PACKAGE_DIR, 'data', folder, 'setup', f'setup_{idx}.csv'),
+            "trajectory": os.path.join(PACKAGE_DIR, 'data', folder, 'trajectory', f'trajectory_{idx}.csv'),
         }
         if RECORD_DATA:
             self.data_files = dict()

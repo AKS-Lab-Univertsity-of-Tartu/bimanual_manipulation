@@ -31,19 +31,18 @@ class MocapListener(Node):
         )
 
         self.use_hardware = False
-        self.record_data = True
+        self.record_data_ = True
 
-        if self.record_data:
+        if self.record_data_:
             self.pathes = {
                 "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{idx}.csv'),
                 "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'trajectory_{idx}.csv'),
             }
             self.data_files = dict()
-            for key, value in self.pathes.items():
-                self.data_files[key] = csv.writer(open(value, "w+"))
-
-            self.data_files['setup'].writerow(['table_1', 'marker_1', 'table_2', 'marker_2'])
-            self.data_files['trajectory'].writerow(['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
+            self.data_files['setup'] = csv.DictWriter(open(self.pathes['setup'], "w+"), fieldnames=['table_1', 'marker_1', 'table_2', 'marker_2'])
+            self.data_files['trajectory'] = csv.DictWriter(open(self.pathes['trajectory'], "w+"), fieldnames=['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
+            self.data_files['setup'].writeheader()
+            self.data_files['trajectory'].writeheader()
 
         # Initialize robot connection
         self.rtde_c_1 = None
@@ -71,7 +70,7 @@ class MocapListener(Node):
             # Move to initial position
             self.move_to_start()
 
-        setup = json.load(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.json'), "r"))
+        setup = list(csv.DictReader(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.csv'), "r")))[10]
         
         # Initialize MuJoCo model and data
         model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
@@ -80,8 +79,8 @@ class MocapListener(Node):
         self.data = mujoco.MjData(self.model)
         self.data.qpos[:self.num_dof] = self.init_joint_position
 
-        table_1_pos = setup['table1']
-        table_2_pos = setup['table2']
+        table_1_pos = json.loads(setup['table_1'])
+        table_2_pos = json.loads(setup['table_2'])
 
         self.model.body(name='table_1').pos = table_1_pos
         # self.model.body(name='table1_marker').pos = setup['marker1']
@@ -222,8 +221,10 @@ class MocapListener(Node):
             self.data.qvel[:self.planner.num_dof] = thetadot
             mujoco.mj_step(self.model, self.data)
 
-        if self.record_data:
-            pass
+        theta = self.data.qpos[:self.planner.num_dof]
+
+        if self.record_data_:
+            self.record_data(theta=theta, thetadot=thetadot)
         
         # Update viewer
         self.viewer.sync()
@@ -233,6 +234,29 @@ class MocapListener(Node):
               f'Cost g: {"%.2f"%(float(cost_g))} | '
               f'Cost c: {"%.2f"%(float(cost_c))} | '
               f'Cost: {np.round(cost, 2)}')
+        
+    def record_data(self, theta, thetadot):
+        timestamp = time.time()
+
+        setup = {
+            "table_1": str(self.model.body(name='table_1').pos.tolist()),
+            "marker_1": str(self.model.body(name='table1_marker').pos.tolist()),
+            "table_2": str(self.model.body(name='table_2').pos.tolist()),
+            "marker_2": str(self.model.body(name='table2_marker').pos.tolist()),
+        }
+        self.data_files['setup'].writerow(setup)
+
+        target_1 = np.concatenate((self.model.body(name='target_0').pos.tolist(), self.model.body(name='target_0').quat.tolist()), axis=None)
+        target_2 = np.concatenate((self.model.body(name='target_1').pos.tolist(), self.model.body(name='target_1').quat.tolist()), axis=None)
+
+        step = {
+            "timestamp" : timestamp,
+            "theta": str(theta.tolist()),
+            "thetadot": str(thetadot.tolist()),
+            "target_1": str(target_1.tolist()),
+            "target_2": str(target_2.tolist())
+        }
+        self.data_files['trajectory'].writerow(step)
 
 def main(args=None):
     rclpy.init(args=args)
