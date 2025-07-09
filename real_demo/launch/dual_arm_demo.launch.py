@@ -10,6 +10,7 @@ def generate_launch_description():
     # Declare launch arguments with defaults
     use_config_file_arg = DeclareLaunchArgument('use_config_file', default_value='false')
     use_hardware_arg = DeclareLaunchArgument('use_hardware', default_value='false')
+    idx_arg = DeclareLaunchArgument('idx', default_value='0')
     record_data_arg = DeclareLaunchArgument('record_data', default_value='false')
     num_batch_arg = DeclareLaunchArgument('num_batch', default_value='500')
     num_steps_arg = DeclareLaunchArgument('num_steps', default_value='15')
@@ -26,6 +27,7 @@ def generate_launch_description():
     # Launch configurations to fetch launch args
     use_config_file = LaunchConfiguration('use_config_file')
     use_hardware = LaunchConfiguration('use_hardware')
+    idx = LaunchConfiguration('idx')
     record_data = LaunchConfiguration('record_data')
     num_batch = LaunchConfiguration('num_batch')
     num_steps = LaunchConfiguration('num_steps')
@@ -48,6 +50,7 @@ def generate_launch_description():
     params = {
         'use_hardware': use_hardware,
         'record_data': record_data,
+        'idx': idx,
         'num_batch': num_batch,
         'num_steps': num_steps,
         'maxiter_cem': maxiter_cem,
@@ -64,6 +67,7 @@ def generate_launch_description():
     return LaunchDescription([
         use_config_file_arg,
         use_hardware_arg,
+        idx_arg,
         record_data_arg,
         num_batch_arg,
         num_steps_arg,

@@ -220,7 +220,7 @@ class run_cem_planner:
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
         # CEM computation
-        cost, best_cost_g, best_cost_r, best_cost_c, best_vels, best_traj, \
+        cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
         primal_res, fixed_res, idx_min = self.cem.compute_cem(
             self.xi_mean,
@@ -238,7 +238,7 @@ class run_cem_planner:
         )
 
         # Get mean velocity command (average middle 80% of trajectory)
-        thetadot_cem = np.mean(best_vels[1:int(self.num_steps*0.9)], axis=0)
+        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
 
         # Check if we should switch to collision-free IK for each arm
         current_cost_g_1 = np.linalg.norm(
@@ -272,4 +272,4 @@ class run_cem_planner:
         # Combine control commands
         thetadot = np.concatenate((thetadot_1, thetadot_2))
         
-        return thetadot, cost, best_cost_g, best_cost_r, best_cost_c
+        return thetadot, cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon

@@ -2,6 +2,7 @@ planner:
   ros__parameters:
     use_hardware: false
     record_data: false
+    idx: 0
     num_batch: 500
     num_steps: 15
     maxiter_cem: 1

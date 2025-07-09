@@ -31,19 +31,20 @@ class Visualizer(Node):
         self.use_hardware = self.get_parameter('use_hardware').get_parameter_value().bool_value
         self.record_data_ = self.get_parameter('record_data').get_parameter_value().bool_value
         self.playback = self.get_parameter('playback').get_parameter_value().bool_value
-        folder = self.get_parameter('folder').get_parameter_value().string_value
+        self.folder = self.get_parameter('folder').get_parameter_value().string_value
         self.idx = self.get_parameter('idx').get_parameter_value().integer_value
         self.idx = str(self.idx).zfill(3)
 
         self.init_joint_position = np.array([1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0])
         self.trajectory = list()
         self.num_dof = 12
+        self.num_steps = 15
 
         model_path = os.path.join(PACKAGE_DIR, 'ur5e_hande_mjx', 'scene.xml')
 
         self.pathes = {
-            "setup": os.path.join(PACKAGE_DIR, 'data', folder, 'setup', f'setup_{self.idx}.csv'),
-            "trajectory": os.path.join(PACKAGE_DIR, 'data', folder, 'trajectory', f'trajectory_{self.idx}.csv'),
+            "setup": os.path.join(PACKAGE_DIR, 'data', self.folder, 'setup', f'setup_{self.idx}.csv'),
+            "trajectory": os.path.join(PACKAGE_DIR, 'data', self.folder, 'trajectory', f'trajectory_{self.idx}.csv'),
         }
         if self.record_data_:
             self.data_files = dict()
@@ -65,7 +66,10 @@ class Visualizer(Node):
 
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]  
+        if self.use_hardware:
+            self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]     
+        else:
+            self.viewer.cam.lookat[:] = [0.0, 0.0, 0.8]  
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
@@ -139,10 +143,10 @@ class Visualizer(Node):
             thetadot_2 = self.rtde_r_2.getActualQd()
             thetadot = np.concatenate((thetadot_1, thetadot_2), axis=None)
         else:
-            theta = self.data.qpos[:12]
-            thetadot = self.data.qvel[:12]
+            theta = self.data.qpos[:self.num_dof]
+            thetadot = self.data.qvel[:self.num_dof]
 
-        self.data.qpos[:12] = theta
+        self.data.qpos[:self.num_dof] = theta
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
@@ -157,7 +161,12 @@ class Visualizer(Node):
     def view_playback(self):
         step_start = time.time()
 
-        theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
+        if self.folder=="manual":
+            theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
+            self.data.qpos[:self.num_dof] = theta
+        elif self.folder=="planner":
+            thetadot_horizon = json.loads(self.data_files['trajectory'][self.step_idx]['thetadot_horizon'])
+            self.data.qvel[:self.num_dof] = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
 
         target_1 = json.loads(self.data_files['trajectory'][self.step_idx]['target_1'])
         target_2 = json.loads(self.data_files['trajectory'][self.step_idx]['target_2'])
@@ -168,8 +177,6 @@ class Visualizer(Node):
         self.model.body(name='target_1').pos = target_2[:3]
         self.model.body(name='target_1').quat = target_2[3:]
 
-        self.data.qpos[:12] = theta
-
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
 
@@ -177,6 +184,12 @@ class Visualizer(Node):
             self.step_idx += 1
         else:
             self.step_idx = 0
+            self.data.qpos[:self.num_dof] = self.init_joint_position
+            self.data.qvel[:self.num_dof] = np.zeros(self.init_joint_position.shape)
+            mujoco.mj_forward(self.model, self.data)
+            self.viewer.sync()
+
+            
 
         time_until_next_step = self.model.opt.timestep - (time.time() - step_start)
         if time_until_next_step > 0:

@@ -20,9 +20,6 @@ from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
-idx = '2'.zfill(3)
-
-
 class Planner(Node):
     def __init__(self):
         super().__init__('planner')
@@ -30,6 +27,7 @@ class Planner(Node):
         # Declare all parameters
         self.declare_parameter('use_hardware', False)
         self.declare_parameter('record_data', False)
+        self.declare_parameter('idx', 0)
         self.declare_parameter('num_batch', 500)
         self.declare_parameter('num_steps', 15)
         self.declare_parameter('maxiter_cem', 1)
@@ -45,6 +43,8 @@ class Planner(Node):
         # Demo params
         self.use_hardware = self.get_parameter('use_hardware').get_parameter_value().bool_value
         self.record_data_ = self.get_parameter('record_data').get_parameter_value().bool_value
+        self.idx = self.get_parameter('idx').get_parameter_value().integer_value
+        self.idx = str(self.idx).zfill(3)
 
         # Planner params
         self.num_dof = 12
@@ -64,13 +64,13 @@ class Planner(Node):
         # Open files to which the data will be saved
         if self.record_data_:
             self.pathes = {
-                "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{idx}.csv'),
-                "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'trajectory_{idx}.csv'),
+                "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{self.idx}.csv'),
+                "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'trajectory_{self.idx}.csv'),
             }
             self.data_files = dict()
 
             self.data_files['setup'] = csv.DictWriter(open(self.pathes['setup'], "w+"), fieldnames=['table_1', 'marker_1', 'table_2', 'marker_2'])
-            self.data_files['trajectory'] = csv.DictWriter(open(self.pathes['trajectory'], "w+"), fieldnames=['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
+            self.data_files['trajectory'] = csv.DictWriter(open(self.pathes['trajectory'], "w+"), fieldnames=['timestamp', 'theta', 'thetadot', 'theta_horizon', 'thetadot_horizon', 'target_1', 'target_2'])
 
             self.data_files['setup'].writeheader()
             self.data_files['trajectory'].writeheader()
@@ -225,7 +225,7 @@ class Planner(Node):
         
         
         # Compute control
-        thetadot, cost, cost_g, cost_r, cost_c = self.planner.compute_control(current_pos, current_vel)
+        thetadot, cost, cost_g, cost_r, cost_c, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel)
         
         if self.use_hardware:
             # Send velocity command
@@ -242,7 +242,7 @@ class Planner(Node):
 
         if self.record_data_:
             theta = self.data.qpos[:self.planner.num_dof]
-            self.record_data(theta=theta, thetadot=thetadot)
+            self.record_data(theta=theta, thetadot=thetadot, theta_horizon=theta_horizon, thetadot_horizon=thetadot_horizon)
         
         # Update viewer
         self.viewer.sync()
@@ -253,7 +253,7 @@ class Planner(Node):
               f'Cost c: {"%.2f"%(float(cost_c))} | '
               f'Cost: {np.round(cost, 2)}', flush=True)
         
-    def record_data(self, theta, thetadot):
+    def record_data(self, theta, thetadot, theta_horizon, thetadot_horizon):
         """Save data to csv file"""
         timestamp = time.time()
 
@@ -272,6 +272,8 @@ class Planner(Node):
             "timestamp" : timestamp,
             "theta": str(theta.tolist()),
             "thetadot": str(thetadot.tolist()),
+            "theta_horizon": str(theta_horizon.tolist()),
+            "thetadot_horizon": str(thetadot_horizon.tolist()),
             "target_1": str(target_1.tolist()),
             "target_2": str(target_2.tolist())
         }
