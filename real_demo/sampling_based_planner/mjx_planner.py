@@ -122,14 +122,13 @@ class cem_planner():
 		self.g = 10
 		self.vec_product = jax.jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
 
-		self.model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
+		self.model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
 		self.model = mujoco.MjModel.from_xml_path(self.model_path)
 		self.data = mujoco.MjData(self.model)
 		self.model.opt.timestep = self.t
 
-		if table_1_pos and table_2_pos:
-			self.model.body(name='table_1').pos = table_1_pos
-			self.model.body(name='table_2').pos = table_2_pos
+		self.model.body(name='table_1').pos = table_1_pos
+		self.model.body(name='table_2').pos = table_2_pos
 
 		self.mjx_model = mjx.put_model(self.model)
 		self.mjx_data = mjx.put_data(self.model, self.data)

@@ -2,7 +2,8 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
-from ament_index_python.packages import get_package_share_directory, get_package_prefix
+from ament_index_python.packages import get_package_share_directory
+
 import os
 import json
 import csv
@@ -17,42 +18,41 @@ from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
-USE_HARDWARE = False
-
-RECORD_DATA = False
-PLAYBACK = True
-idx = "2".zfill(3)
-
-
 class Visualizer(Node):
     def __init__(self):
         super().__init__('visualizer')
 
-        qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
-            depth=1
-        )
+        self.declare_parameter('use_hardware', False)
+        self.declare_parameter('record_data', False)
+        self.declare_parameter('playback', True)
+        self.declare_parameter('folder', "manual") # manual or planner
+        self.declare_parameter('idx', 0)
+
+        self.use_hardware = self.get_parameter('use_hardware').get_parameter_value().bool_value
+        self.record_data_ = self.get_parameter('record_data').get_parameter_value().bool_value
+        self.playback = self.get_parameter('playback').get_parameter_value().bool_value
+        folder = self.get_parameter('folder').get_parameter_value().string_value
+        self.idx = self.get_parameter('idx').get_parameter_value().integer_value
+        self.idx = str(self.idx).zfill(3)
+
         self.init_joint_position = np.array([1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0])
         self.trajectory = list()
         self.num_dof = 12
 
         model_path = os.path.join(PACKAGE_DIR, 'ur5e_hande_mjx', 'scene.xml')
 
-        # folder = 'manual'
-        folder = 'planner'
-
         self.pathes = {
-            "setup": os.path.join(PACKAGE_DIR, 'data', folder, 'setup', f'setup_{idx}.csv'),
-            "trajectory": os.path.join(PACKAGE_DIR, 'data', folder, 'trajectory', f'trajectory_{idx}.csv'),
+            "setup": os.path.join(PACKAGE_DIR, 'data', folder, 'setup', f'setup_{self.idx}.csv'),
+            "trajectory": os.path.join(PACKAGE_DIR, 'data', folder, 'trajectory', f'trajectory_{self.idx}.csv'),
         }
-        if RECORD_DATA:
+        if self.record_data_:
             self.data_files = dict()
             self.data_files['setup'] = csv.DictWriter(open(self.pathes['setup'], "w+"), fieldnames=['table_1', 'marker_1', 'table_2', 'marker_2'])
             self.data_files['trajectory'] = csv.DictWriter(open(self.pathes['trajectory'], "w+"), fieldnames=['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
             self.data_files['setup'].writeheader()
             self.data_files['trajectory'].writeheader()
 
-        elif PLAYBACK:
+        elif self.playback:
             self.data_files = dict()
             for key, value in self.pathes.items():
                 self.data_files[key] = list(csv.DictReader(open(value, "r")))
@@ -70,9 +70,9 @@ class Visualizer(Node):
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
 
-        if not PLAYBACK:
+        if not self.playback:
 
-            if USE_HARDWARE:
+            if self.use_hardware:
                 self.rtde_c_1 = RTDEControl("192.168.0.120")
                 self.rtde_r_1 = RTDEReceive("192.168.0.120")
 
@@ -80,6 +80,7 @@ class Visualizer(Node):
                 self.rtde_r_2 = RTDEReceive("192.168.0.124")
                 self.move_to_start()
 
+            qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
             self.subscription_table1 = self.create_subscription(
                 PoseStamped,
                 '/vrpn_mocap/table1/pose',
@@ -129,7 +130,7 @@ class Visualizer(Node):
     def view_model(self):
         step_start = time.time()
 
-        if USE_HARDWARE:
+        if self.use_hardware:
             theta_1 = self.rtde_r_1.getActualQ()
             theta_2 = self.rtde_r_2.getActualQ()
             theta = np.concatenate((theta_1, theta_2), axis=None)
@@ -146,7 +147,7 @@ class Visualizer(Node):
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
 
-        if RECORD_DATA:
+        if self.record_data_:
             self.record_data(theta=theta, thetadot=thetadot)
 
         time_until_next_step = self.model.opt.timestep - (time.time() - step_start)
@@ -204,11 +205,12 @@ class Visualizer(Node):
         self.model.body(name='target_1').pos = marker_pose
 
     def close_connection(self):
-        self.rtde_c_1.speedStop()
-        self.rtde_c_1.disconnect()
-        self.rtde_c_2.speedStop()
-        self.rtde_c_2.disconnect()
-        print("Disconnected from UR5 Robot")
+        if self.playback==False and self.use_hardware==True:
+            self.rtde_c_1.speedStop()
+            self.rtde_c_1.disconnect()
+            self.rtde_c_2.speedStop()
+            self.rtde_c_2.disconnect()
+            print("Disconnected from UR5 Robot")
 
     def record_data(self, theta, thetadot):
         timestamp = time.time()
@@ -246,8 +248,7 @@ def main(args=None):
     except KeyboardInterrupt:
         print("Node interrupted with Ctrl+C")
     finally:
-        if PLAYBACK==False and USE_HARDWARE==True:
-            visualizer.close_connection()
+        visualizer.close_connection()
         visualizer.destroy_node()
         rclpy.shutdown()
 

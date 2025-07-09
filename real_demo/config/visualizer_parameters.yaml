@@ -1,0 +1,7 @@
+visualizer:
+  ros__parameters:
+    use_hardware: false
+    record_data: false
+    playback: true
+    folder: "planner"
+    idx: "2"

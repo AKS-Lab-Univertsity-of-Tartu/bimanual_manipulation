@@ -4,7 +4,6 @@ from geometry_msgs.msg import PoseStamped
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 from ament_index_python.packages import get_package_share_directory
 
-
 import os
 import time
 import json
@@ -28,11 +27,39 @@ class Planner(Node):
     def __init__(self):
         super().__init__('planner')
 
-        qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
+        # Declare all parameters
+        self.declare_parameter('use_hardware', False)
+        self.declare_parameter('record_data', False)
+        self.declare_parameter('num_batch', 500)
+        self.declare_parameter('num_steps', 15)
+        self.declare_parameter('maxiter_cem', 1)
+        self.declare_parameter('maxiter_projection', 5)
+        self.declare_parameter('w_pos', 3.0)
+        self.declare_parameter('w_rot', 0.5)
+        self.declare_parameter('w_col', 500.0)
+        self.declare_parameter('num_elite', 0.05)
+        self.declare_parameter('timestep', 0.1)
+        self.declare_parameter('position_threshold', 0.06)
+        self.declare_parameter('rotation_threshold', 0.1)
 
-        self.use_hardware = False
-        self.record_data_ = False
+        # Demo params
+        self.use_hardware = self.get_parameter('use_hardware').get_parameter_value().bool_value
+        self.record_data_ = self.get_parameter('record_data').get_parameter_value().bool_value
 
+        # Planner params
+        self.num_dof = 12
+        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
+        num_batch = self.get_parameter('num_batch').get_parameter_value().integer_value
+        num_steps = self.get_parameter('num_steps').get_parameter_value().integer_value
+        maxiter_cem = self.get_parameter('maxiter_cem').get_parameter_value().integer_value
+        maxiter_projection = self.get_parameter('maxiter_projection').get_parameter_value().integer_value
+        w_pos = self.get_parameter('w_pos').get_parameter_value().double_value
+        w_rot = self.get_parameter('w_rot').get_parameter_value().double_value
+        w_col = self.get_parameter('w_col').get_parameter_value().double_value
+        num_elite = self.get_parameter('num_elite').get_parameter_value().double_value
+        timestep = self.get_parameter('timestep').get_parameter_value().double_value
+        position_threshold = self.get_parameter('position_threshold').get_parameter_value().double_value
+        rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
 
         # Open files to which the data will be saved
         if self.record_data_:
@@ -55,9 +82,6 @@ class Planner(Node):
         self.rtde_c_2 = None
         self.rtde_r_2 = None
 
-        self.num_dof = 12
-        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
-
         if self.use_hardware:
             try:
                 self.rtde_c_1 = RTDEControl("192.168.0.120")
@@ -65,9 +89,9 @@ class Planner(Node):
 
                 self.rtde_c_2 = RTDEControl("192.168.0.124")
                 self.rtde_r_2 = RTDEReceive("192.168.0.124")
-                print("Connection with UR5e established.")
+                print("Connection with UR5e established.", flush=True)
             except Exception as e:
-                print(f"Could not connect to robot: {e}")
+                print(f"Could not connect to robot: {e}", flush=True)
                 rclpy.shutdown()
                 return
 
@@ -77,36 +101,40 @@ class Planner(Node):
         # Initialize MuJoCo model and data
         model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
         self.model = mujoco.MjModel.from_xml_path(model_path)
-        self.model.opt.timestep = 0.1
+        self.model.opt.timestep = timestep
 
         self.data = mujoco.MjData(self.model)
         self.data.qpos[:self.num_dof] = self.init_joint_position
 
         # Set the table positions alligmed with the motion capture coordinate system
-        setup = list(csv.DictReader(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.csv'), "r")))[-1]
-        table_1_pos = json.loads(setup['table_1'])
-        table_2_pos = json.loads(setup['table_2'])
-        self.model.body(name='table_1').pos = table_1_pos
-        self.model.body(name='table1_marker').pos = json.loads(setup['marker_1'])
-        self.model.body(name='table_2').pos = table_2_pos
-        self.model.body(name='table2_marker').pos = json.loads(setup['marker_2'])
+        if self.use_hardware:
+            setup = list(csv.DictReader(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.csv'), "r")))[-1]
+            table_1_pos = json.loads(setup['table_1'])
+            table_2_pos = json.loads(setup['table_2'])
+            self.model.body(name='table_1').pos = table_1_pos
+            self.model.body(name='table1_marker').pos = json.loads(setup['marker_1'])
+            self.model.body(name='table_2').pos = table_2_pos
+            self.model.body(name='table2_marker').pos = json.loads(setup['marker_2'])
+        else:
+            table_1_pos = self.model.body(name='table_1').pos
+            table_2_pos = self.model.body(name='table_2').pos
         
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
             model=self.model,
             data=self.data,
-            num_dof=12,
-            num_batch=500,
-            num_steps=15,
-            maxiter_cem=1,
-            maxiter_projection=5,
-            w_pos=3.0,
-            w_rot=0.5,
-            w_col=500.0,
-            num_elite=0.05,
-            timestep=0.1,
-            position_threshold=0.06,
-            rotation_threshold=0.1,
+            num_dof=self.num_dof,
+            num_batch=num_batch,
+            num_steps=num_steps,
+            maxiter_cem=maxiter_cem,
+            maxiter_projection=maxiter_projection,
+            w_pos=w_pos,
+            w_rot=w_rot,
+            w_col=w_col,
+            num_elite=num_elite,
+            timestep=timestep,
+            position_threshold=position_threshold,
+            rotation_threshold=rotation_threshold,
             table_1_pos=table_1_pos,
             table_2_pos=table_2_pos
         )
@@ -114,24 +142,28 @@ class Planner(Node):
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]     #[0.0, 0.0, 0.8]  
+        if self.use_hardware:
+            self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]     
+        else:
+            self.viewer.cam.lookat[:] = [0.0, 0.0, 0.8]  
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
 
         # Setup subscribers
+        qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
         self.subscription_object1 = self.create_subscription(PoseStamped, '/vrpn_mocap/object1/pose', self.object1_callback, qos_profile)
         self.subscription_object1 = self.create_subscription(PoseStamped, '/vrpn_mocap/object2/pose', self.object2_callback, qos_profile)
         self.subscription_obstacle1 = self.create_subscription(PoseStamped, '/vrpn_mocap/obstacle1/pose', self.obstacle1_callback, qos_profile)
         
         # Setup control timer
-        self.timer = self.create_timer(0.1, self.control_loop)
+        self.timer = self.create_timer(timestep, self.control_loop)
 
     def move_to_start(self):
         """Move robot to initial joint position"""
         self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
         self.rtde_c_2.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
-        print("Moved to initial pose.")
+        print("Moved to initial pose.", flush=True)
 
     def close_connection(self):
         if self.use_hardware:
@@ -143,7 +175,7 @@ class Planner(Node):
             if self.rtde_c_2:
                 self.rtde_c_2.speedStop()
                 self.rtde_c_2.disconnect()
-            print("Disconnected from UR5e Robot")
+            print("Disconnected from UR5e Robot", flush=True)
 
     def object1_callback(self, msg):
         """Callback for target object pose updates"""
@@ -219,7 +251,7 @@ class Planner(Node):
         print(f'Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms | '
               f'Cost g: {"%.2f"%(float(cost_g))} | '
               f'Cost c: {"%.2f"%(float(cost_c))} | '
-              f'Cost: {np.round(cost, 2)}')
+              f'Cost: {np.round(cost, 2)}', flush=True)
         
     def record_data(self, theta, thetadot):
         """Save data to csv file"""
@@ -248,16 +280,17 @@ class Planner(Node):
 def main(args=None):
     rclpy.init(args=args)
     planner = Planner()
-    print("Initialized node.")
+    print("Initialized node.", flush=True)
     
     try:
         rclpy.spin(planner)
     except KeyboardInterrupt:
-        print("Shutting down...")
+        print("Shutting down...", flush=True)
     finally:
-        planner.close_connection()
-        planner.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            planner.close_connection()
+            planner.destroy_node()
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
