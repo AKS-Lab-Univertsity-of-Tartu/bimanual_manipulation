@@ -85,3 +85,4 @@ typing_extensions==4.13.2
 wcwidth==0.2.13
 zipp==3.21.0
 ur_rtde
+qpsolvers[daqp]
