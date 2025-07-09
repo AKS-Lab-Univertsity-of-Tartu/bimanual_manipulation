@@ -9,13 +9,12 @@ os.environ['XLA_FLAGS'] = xla_flags
 
 from functools import partial
 import numpy as np
-import jax.numpy as jnp
+import time
+
 import mujoco
 import mujoco.mjx as mjx 
 import jax
-import time
-#jax.config.update("jax_enable_x64", True)
-
+import jax.numpy as jnp
 
 
 class cem_planner():
@@ -42,28 +41,13 @@ class cem_planner():
 		tot_time = np.linspace(0, self.t_fin, self.num)
 		self.tot_time = tot_time
 		tot_time_copy = tot_time.reshape(self.num, 1)
-		
-		#self.P, self.Pdot, self.Pddot = bernstein_coeff_ordern_arbitinterval.bernstein_coeff_ordern_new(49, tot_time_copy[0], tot_time_copy[-1], tot_time_copy)
-		#self.P, self.Pdot, self.Pddot = bernstein_coeff_order10_arbitinterval.bernstein_coeff_order10_new(10, tot_time_copy[0], tot_time_copy[-1], tot_time_copy)
-        
 
-
-        #Velocity mapping 
-		self.P = jnp.identity(self.num)
-		
-		#Accelaration mapping
-		self.Pdot = jnp.diff(self.P, axis=0)/self.t
-        
-		#Jerk mapping
-		self.Pddot = jnp.diff(self.Pdot, axis=0)/self.t
-
-        #Position mapping
-		self.Pint = jnp.cumsum(self.P, axis=0)*self.t
-		
+		self.P = jnp.identity(self.num) # Velocity mapping 
+		self.Pdot = jnp.diff(self.P, axis=0)/self.t # Accelaration mapping
+		self.Pddot = jnp.diff(self.Pdot, axis=0)/self.t # Jerk mapping
+		self.Pint = jnp.cumsum(self.P, axis=0)*self.t # Position mapping
 		self.P_jax, self.Pdot_jax, self.Pddot_jax = jnp.asarray(self.P), jnp.asarray(self.Pdot), jnp.asarray(self.Pddot)
-
 		self.Pint_jax = jnp.asarray(self.Pint)
-
 
 		self.nvar_single = jnp.shape(self.P_jax)[1]
 		self.nvar = self.nvar_single*self.num_dof 
@@ -89,8 +73,6 @@ class cem_planner():
 		self.A_p_ineq_single_dof = jnp.asarray(A_p_ineq_single_dof) 
 		self.A_p_single_dof = jnp.asarray(A_p_single_dof)
 
-
-
 		# Combined control matrix (like A_control in )
 		self.A_control_single_dof = jnp.vstack((
 			self.A_v_ineq_single_dof,
@@ -109,9 +91,6 @@ class cem_planner():
 		self.A_thetaddot = np.asarray(A_thetaddot)
 		self.A_thetadddot = np.asarray(A_thetadddot)
 		
-		#vmap parrallelization takes place over first axis
-		self.compute_boundary_vec_batch_single_dof = (jax.vmap(self.compute_boundary_vec_single_dof, in_axes = (0)  ))
-
 		self.key= jax.random.PRNGKey(42)
 		self.maxiter_projection = maxiter_projection
 		self.maxiter_cem = maxiter_cem
@@ -119,13 +98,9 @@ class cem_planner():
 		self.v_max = max_joint_vel
 		self.a_max = max_joint_acc
 		self.j_max = max_joint_jerk
-		self.p_max = max_joint_pos
-
-
-		#Calculate number constraints
-		
+		self.p_max = max_joint_pos		
 		    
-    	#calculating number of Inequality constraints
+    	# Calculating number of Inequality constraints
 		self.num_vel = self.num
 		self.num_acc = self.num - 1
 		self.num_jerk = self.num - 2
@@ -135,10 +110,7 @@ class cem_planner():
 		self.num_acc_constraints = 2 * self.num_acc * num_dof
 		self.num_jerk_constraints = 2 * self.num_jerk * num_dof
 		self.num_pos_constraints = 2 * self.num_pos * num_dof
-		self.num_total_constraints = (self.num_vel_constraints + self.num_acc_constraints + 
-									 	self.num_jerk_constraints + self.num_pos_constraints)
-	
-		
+		self.num_total_constraints = (self.num_vel_constraints + self.num_acc_constraints + self.num_jerk_constraints + self.num_pos_constraints)
 		self.num_total_constraints_per_dof = 2*(self.num_vel + self.num_acc + self.num_jerk + self.num_pos)
 
 		self.ellite_num = int(self.num_elite*self.num_batch)
@@ -178,12 +150,7 @@ class cem_planner():
 				self.geom_ids.append(i)
 
 		self.geom_ids_all = np.array(self.geom_ids)
-		
-		#self.geom_ids = np.array([mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, f'robot_{i}') for i in range(10)])
-		# print("self.geom_ids", self.geom_ids)
 		self.mask = jnp.any(jnp.isin(self.mjx_data.contact.geom, self.geom_ids_all), axis=1)
-		# print("self.mask", len(self.mask))
-		# print("self.mask", self.mask.shape)
 
 		self.hande_id = self.model.body(name="hande").id
 		self.tcp_id = self.model.site(name="tcp").id
@@ -193,12 +160,8 @@ class cem_planner():
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0))
-
-		
-
-        #vmap parrallelization takes place over first axis
-		self.compute_projection_batched_over_dof = jax.vmap(self.compute_projection_single_dof, in_axes=(0, 0, 0, 0, 0))
-
+		self.compute_boundary_vec_batch_single_dof = (jax.vmap(self.compute_boundary_vec_single_dof, in_axes = (0)  )) # vmap parrallelization takes place over first axis
+		self.compute_projection_batched_over_dof = jax.vmap(self.compute_projection_single_dof, in_axes=(0, 0, 0, 0, 0)) # vmap parrallelization takes place over first axis
 
 		self.print_info()
 
@@ -222,22 +185,20 @@ class cem_planner():
     
 	def get_A_traj(self):
 
-		# #This is valid while dealing with knots anfd projecting into pos,vel,acc space with Bernstein Polynomials
+		# This is valid while dealing with knots anfd projecting into pos,vel,acc space with Bernstein Polynomials
 		# A_theta = np.kron(np.identity(self.num_dof), self.P )
 		# A_thetadot = np.kron(np.identity(self.num_dof), self.Pdot )
 		# A_thetaddot = np.kron(np.identity(self.num_dof), self.Pddot )
         
-        ##This is valid while not using knots and bernstein polynomials; directlly using velocity
+        # This is valid while not using knots and bernstein polynomials; directlly using velocity
 		A_theta = np.kron(np.identity(self.num_dof), self.Pint )
 		A_thetadot = np.kron(np.identity(self.num_dof), self.P )
 		A_thetaddot = np.kron(np.identity(self.num_dof), self.Pdot )
 		A_thetadddot = np.kron(np.identity(self.num_dof), self.Pddot )
 
-	
 		return A_theta, A_thetadot, A_thetaddot, A_thetadddot	
 
 
-	
 	def get_A_p_single_dof(self):
 		A_p = np.vstack(( self.Pint, -self.Pint))
 		A_p_ineq = np.kron(np.identity(1), A_p )
@@ -259,28 +220,17 @@ class cem_planner():
 		return A_j_ineq, A_j
 	
 	def get_A_eq_single_dof(self):
-		#return np.kron(np.identity(self.num_dof), np.vstack((self.P[0], self.Pdot[0], self.Pddot[0], self.Pdot[-1], self.Pddot[-1]    )))
-		#return np.kron(np.identity(self.num_dof), np.vstack((self.Pint[0], self.P[0], self.Pdot[0], self.P[-1], self.Pdot[-1]  )))
 		return np.kron(np.identity(1), self.P[0])
-		#return np.kron(np.identity(self.num_dof), np.vstack((self.Pint[0], self.P[0] )))
-		# 	
 
 	
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_boundary_vec_single_dof(self, state_term):
-
-		# print("state_term", state_term.shape)
-
 		num_eq_constraint_per_dof = int(jnp.shape(state_term)[0])
-
-		# jax.debug.print("num_eq_constraint: {}", num_eq_constraint)
-
 		b_eq_term = state_term.reshape( num_eq_constraint_per_dof).T
 		b_eq_term = b_eq_term.reshape(num_eq_constraint_per_dof)
 		return b_eq_term
 	
 
-	
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_feasible_control_single_dof(self, lamda_init_single_dof, s_init_single_dof, 
 										 b_eq_term_single_dof, xi_samples_single_dof, 
@@ -346,12 +296,6 @@ class cem_planner():
 		# Solve KKT system
 		sol = jnp.linalg.solve(cost_mat, jnp.hstack((-lincost, b_eq_term_single_dof)).T).T
 
-		# print("cost_mat.shape:", cost_mat.shape)
-		# print("lincost.shape:", lincost.shape)
-		# print("b_eq_term_single_dof.shape:", b_eq_term_single_dof.shape)
-
-		# print("sol.shape:", sol.shape)
-
 		# Extract primal solution
 		xi_projected = sol[:, :self.nvar_single]
 
@@ -378,9 +322,8 @@ class cem_planner():
 									   lamda_init_single_dof, 
 									   s_init_single_dof, 
 									   init_pos_single_dof):
-		# # state_term_single_dof: (B, K) → flatten across batch
-		# print("state_term_single_dof", state_term_single_dof.shape)
-		# print("state_term_single_dof", state_term_single_dof)
+		
+		# state_term_single_dof: (B, K) → flatten across batch
 		b_eq_term = self.compute_boundary_vec_batch_single_dof(state_term_single_dof)  # should become (B, K), flattened
 
 		xi_projected_init_single_dof = xi_samples_single_dof
@@ -434,6 +377,7 @@ class cem_planner():
 
 		return mjx_data, (theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision)
 
+
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_rollout_single(self, thetadot, init_pos, init_vel):
 
@@ -446,13 +390,9 @@ class cem_planner():
 		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = out
 		return theta.T.flatten(), eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision
 	
+
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_cost_single(self, theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2):
-		# jax.debug.print("collision in function: {}", jnp.shape(collision))
-		# jax.debug.print("eef_pos in function: {}", jnp.shape(eef_pos))
-		# jax.debug.print("eef_rot in function: {}", jnp.shape(eef_rot))
-		# jax.debug.print("target_pos in function: {}", jnp.shape(target_pos))
-		# jax.debug.print("target_rot in function: {}", jnp.shape(target_rot))
 
 		cost_g_1 = jnp.linalg.norm(eef_pos - target_pos, axis=1)
 		cost_g_2 = jnp.linalg.norm(eef_pos_2 - target_pos_2, axis=1)
@@ -472,30 +412,15 @@ class cem_planner():
 		cost_r_2 = 2 * jnp.arccos(dot_product)
 
 		cost_r = (np.sum(cost_r_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_2 * jnp.linspace(0, 1, self.num)))/2
-
-		# HIgher y implies stricter condition on g to be positive 
-		y = 0.2
-
+ 
+		y = 0.2 # Higher y implies stricter condition on g to be positive
 		collision = collision.T
-		# jax.debug.print("cost_g in function: {}", jnp.shape(cost_g))
-		# jax.debug.print("cost_r in function: {}", jnp.shape(cost_r))
-
-
-		# g = -collision[:, 1:]+collision[:, :-1]-y*collision[:, :-1]
 		g = -collision[:, 1:]+(1 - y)*collision[:, :-1]
-
-		# jax.debug.print("g in function: {}", jnp.shape(g))
-		#cost_c = jnp.sum(jnp.max(g.reshape(g.shape[0], g.shape[1], 1), axis=-1, initial=0)) + jnp.sum(collision < 0)
-
 		cost_c = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision < 0)
 
 		cost_theta = jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T - self.init_joint_position)
 
-		# jax.debug.print("cost_c in function: {}", cost_c)
-
 		cost = self.cost_weights['w_pos']*cost_g + self.cost_weights['w_rot']*cost_r + self.cost_weights['w_col']*cost_c + 0.3*cost_theta
-
-		# jax.debug.print("cost_c in function: {}", jnp.shape(cost_c))
 
 		return cost, cost_g, cost_r, cost_c
 	
@@ -539,9 +464,6 @@ class cem_planner():
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
 
-		#xi_samples, key = self.compute_xi_samples(key, xi_mean, xi_cov)
-        #xi_samples shape = (num_batch, num*num_dof)
-
 		xi_samples_reshaped = xi_samples.reshape(self.num_batch, self.num_dof, self.num)
 		xi_samples_batched_over_dof = jnp.transpose(xi_samples_reshaped, (1, 0, 2)) # shape: (DoF, B, num)
 
@@ -556,7 +478,7 @@ class cem_planner():
 
 
 		
-        # #PAss all arguments as positional arguments; not keyword arguments
+        # Pass all arguments as positional arguments; not keyword arguments
 		xi_filtered, primal_residuals, fixed_point_residuals = self.compute_projection_batched_over_dof(
 			                                                     xi_samples_batched_over_dof, 
 														         state_term_batched_over_dof, 
@@ -564,8 +486,6 @@ class cem_planner():
 																 s_init_batched_over_dof, 
 																 init_pos)
 		
-		#xi_filtered = xi_filtered.reshape(self.num_batch, self.num* self.num_dof)
-
 		xi_filtered = xi_filtered.transpose(1, 0, 2).reshape(self.num_batch, -1) # shape: (B, num*num_dof)
 		
 		primal_residuals = jnp.linalg.norm(primal_residuals, axis = 0)
@@ -579,29 +499,17 @@ class cem_planner():
 
 
 		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel)
-       
-		# jax.debug.print("eef_pos: {}", jnp.shape(eef_pos))
-		# jax.debug.print("eef_rot: {}", jnp.shape(eef_rot))
-		# jax.debug.print("collision: {}", jnp.shape(collision))
-		# jax.debug.print("theta: {}", jnp.shape(theta))
-		# jax.debug.print("target_pos: {}", jnp.shape(target_pos))
-		# jax.debug.print("target_rot: {}", jnp.shape(target_rot))
-
 		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
-
-
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
-
 
 		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new)
 
 		return carry, (cost_batch, cost_g_batch, cost_r_batch, cost_c_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
 	
-    #=jnp.array([1.5, -1.8, 1.75, -1.25, -1.6, 0]) 
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_cem(
 		self, xi_mean, 
@@ -619,11 +527,7 @@ class cem_planner():
 		):
 
 
-		theta_init = jnp.tile(init_pos, (self.num_batch, 1))
 		thetadot_init = jnp.tile(init_vel, (self.num_batch, 1))
-		thetaddot_init = jnp.tile(init_acc, (self.num_batch, 1))
-		thetadot_fin = jnp.zeros((self.num_batch, self.num_dof))
-		thetaddot_fin = jnp.zeros((self.num_batch, self.num_dof))
 
 		target_pos = jnp.tile(target_pos, (self.num_batch, 1))
 		target_rot = jnp.tile(target_rot, (self.num_batch, 1))
@@ -631,17 +535,8 @@ class cem_planner():
 		target_pos_2 = jnp.tile(target_pos_2, (self.num_batch, 1))
 		target_rot_2 = jnp.tile(target_rot_2, (self.num_batch, 1))
 
-		# state_term = jnp.hstack((theta_init, thetadot_init, thetaddot_init, thetadot_fin, thetaddot_fin))
-
-		#state_term = jnp.hstack((thetadot_init, thetadot_fin))
-
 		state_term = thetadot_init	
-
-		# state_term = jnp.asarray(state_term)
-
 		
-		
-  
 		key, subkey = jax.random.split(self.key)
 
 		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples)
@@ -661,9 +556,6 @@ class cem_planner():
 
 		xi_mean = carry[6]
 		xi_cov = carry[7]
-
-		# primal_res = primal_residual[-1, :, idx_min]
-		# fixed_res = fixed_point_residual[-1, :, idx_min]
 	    
 		return (
 			cost,
@@ -682,50 +574,3 @@ class cem_planner():
 			fixed_point_residuals,
 			idx_min,
 		)
-def main():
-	num_dof = 6
-	num_batch = 500
-
-	start_time = time.time()
-	#opt_class = cem_planner(num_dof, num_batch, w_pos=3, num_elite=0.1, maxiter_cem=30)	
-	opt_class = cem_planner(num_dof=6, num_batch=2000, num_steps=50, maxiter_cem=1,
-                           w_pos=1, w_rot=0.5, w_col=10, num_elite=0.05, timestep=0.05,
-						   maxiter_projection=5, max_joint_pos = np.pi, max_joint_vel=2.0, max_joint_acc=5.0, max_joint_jerk=10.0)
-
-	start_time_comp_cem = time.time()
-	xi_mean = jnp.zeros(opt_class.nvar)
-	xi_cov = 10.0*jnp.identity(opt_class.nvar)
-	xi_samples, key = opt_class.compute_xi_samples(opt_class.key, xi_mean, xi_cov)
-	init_pos = jnp.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-	init_vel = jnp.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-	init_acc = jnp.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-	target_pos = jnp.array([0.0, 0.0, 0.0])
-	target_rot = jnp.array([0.0, 0.0, 0.0, 1.0])
-	s_init = jnp.zeros((opt_class.num_batch, opt_class.num_total_constraints))
-	lamda_init = jnp.zeros((opt_class.num_batch, opt_class.nvar))
-	
-	cost, best_cost_g, best_cost_r, best_cost_c, best_vels, best_traj, \
-	xi_mean, xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
-	primal_res, fixed_res, _ = opt_class.compute_cem(
-		xi_mean,
-		xi_cov,
-		init_pos,
-		init_vel,
-		init_acc,
-		target_pos,
-		target_rot,
-		lamda_init,
-		s_init,
-		xi_samples
-	)
-	
-	print(f"Total time: {round(time.time()-start_time, 2)}s")
-	print(f"Compute CEM time: {round(time.time()-start_time_comp_cem, 2)}s")
-
-	
-	
-if __name__ == "__main__":
-	main()
-
-
-  	

@@ -11,7 +11,7 @@ data_files=[
         ('share/' + package_name, ['package.xml']),
     ]
 
-folders = ['ur5e_hande_mjx', 'urx', 'mj_planner', 'data', 'ik_based_planner', 'collision_free_ik', 'sampling_based_planner']
+folders = ['ur5e_hande_mjx', 'mj_planner', 'data', 'ik_based_planner', 'collision_free_ik', 'sampling_based_planner']
 
 for folder in folders:
     for dirpath, dirnames, filenames in os.walk(folder):
@@ -19,30 +19,6 @@ for folder in folders:
             files = [os.path.join(dirpath, f) for f in filenames]
             install_path = os.path.join('share', package_name, dirpath)
             data_files.append((install_path, files))
-
-# for dirpath, dirnames, filenames in os.walk('ur5e_hande_mjx'):
-#     if filenames:
-#         files = [os.path.join(dirpath, f) for f in filenames]
-#         install_path = os.path.join('share', package_name, dirpath)
-#         data_files.append((install_path, files))
-
-# for dirpath, dirnames, filenames in os.walk('urx'):
-#     if filenames:
-#         files = [os.path.join(dirpath, f) for f in filenames]
-#         install_path = os.path.join('share', package_name, dirpath)
-#         data_files.append((install_path, files))
-
-# for dirpath, dirnames, filenames in os.walk('mj_planner'):
-#     if filenames:
-#         files = [os.path.join(dirpath, f) for f in filenames]
-#         install_path = os.path.join('share', package_name, dirpath)
-#         data_files.append((install_path, files))
-
-# for dirpath, dirnames, filenames in os.walk('json'):
-#     if filenames:
-#         files = [os.path.join(dirpath, f) for f in filenames]
-#         install_path = os.path.join('share', package_name, dirpath)
-#         data_files.append((install_path, files))
 
 setup(
     name=package_name,
@@ -58,8 +34,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'mocap_listener = real_demo.mocap_listener:main',
-            'mocap_listener2 = real_demo.mocap_listener2:main',
+            'dual_arm_demo = real_demo.dual_arm_demo:main',
             'visualizer = real_demo.visualizer:main'
         ],
     },

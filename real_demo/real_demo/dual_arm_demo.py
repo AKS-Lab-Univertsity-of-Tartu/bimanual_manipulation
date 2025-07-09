@@ -10,10 +10,12 @@ import time
 import json
 import csv
 import numpy as np
+
 import mujoco
 from mujoco import viewer
 
-from sampling_based_planner.mpc_planner_2 import run_cem_planner
+from sampling_based_planner.mpc_planner import run_cem_planner
+
 from rtde_control import RTDEControlInterface as RTDEControl
 from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
@@ -22,25 +24,27 @@ PACKAGE_DIR = get_package_share_directory('real_demo')
 idx = '2'.zfill(3)
 
 
-class MocapListener(Node):
+class Planner(Node):
     def __init__(self):
-        super().__init__('mocap_listener')
-        qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
-            depth=1
-        )
+        super().__init__('planner')
 
-        self.use_hardware = True
-        self.record_data_ = True
+        qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
 
+        self.use_hardware = False
+        self.record_data_ = False
+
+
+        # Open files to which the data will be saved
         if self.record_data_:
             self.pathes = {
                 "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{idx}.csv'),
                 "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'trajectory_{idx}.csv'),
             }
             self.data_files = dict()
+
             self.data_files['setup'] = csv.DictWriter(open(self.pathes['setup'], "w+"), fieldnames=['table_1', 'marker_1', 'table_2', 'marker_2'])
             self.data_files['trajectory'] = csv.DictWriter(open(self.pathes['trajectory'], "w+"), fieldnames=['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
+
             self.data_files['setup'].writeheader()
             self.data_files['trajectory'].writeheader()
 
@@ -69,23 +73,23 @@ class MocapListener(Node):
 
             # Move to initial position
             self.move_to_start()
-
-        setup = list(csv.DictReader(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.csv'), "r")))[-1]
         
         # Initialize MuJoCo model and data
-        model_path = os.path.join(get_package_share_directory('real_demo'),'sampling_based_planner', 'ur5e_hande_mjx', 'scene.xml')
+        model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.model.opt.timestep = 0.1
+
         self.data = mujoco.MjData(self.model)
         self.data.qpos[:self.num_dof] = self.init_joint_position
 
+        # Set the table positions alligmed with the motion capture coordinate system
+        setup = list(csv.DictReader(open(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.csv'), "r")))[-1]
         table_1_pos = json.loads(setup['table_1'])
         table_2_pos = json.loads(setup['table_2'])
-
         self.model.body(name='table_1').pos = table_1_pos
-        # self.model.body(name='table1_marker').pos = setup['marker1']
+        self.model.body(name='table1_marker').pos = json.loads(setup['marker_1'])
         self.model.body(name='table_2').pos = table_2_pos
-        # self.model.body(name='table2_marker').pos = setup['marker2']
+        self.model.body(name='table2_marker').pos = json.loads(setup['marker_2'])
         
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
@@ -110,30 +114,15 @@ class MocapListener(Node):
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]#[0.0, 0.0, 0.8]  
+        self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]     #[0.0, 0.0, 0.8]  
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
 
         # Setup subscribers
-        self.subscription_object1 = self.create_subscription(
-            PoseStamped,
-            '/vrpn_mocap/object1/pose',
-            self.object1_callback,
-            qos_profile 
-        )
-        self.subscription_object1 = self.create_subscription(
-            PoseStamped,
-            '/vrpn_mocap/object2/pose',
-            self.object2_callback,
-            qos_profile 
-        )
-        self.subscription_obstacle1 = self.create_subscription(
-            PoseStamped,
-            '/vrpn_mocap/obstacle1/pose',
-            self.obstacle1_callback,
-            qos_profile 
-        )
+        self.subscription_object1 = self.create_subscription(PoseStamped, '/vrpn_mocap/object1/pose', self.object1_callback, qos_profile)
+        self.subscription_object1 = self.create_subscription(PoseStamped, '/vrpn_mocap/object2/pose', self.object2_callback, qos_profile)
+        self.subscription_obstacle1 = self.create_subscription(PoseStamped, '/vrpn_mocap/obstacle1/pose', self.obstacle1_callback, qos_profile)
         
         # Setup control timer
         self.timer = self.create_timer(0.1, self.control_loop)
@@ -154,7 +143,7 @@ class MocapListener(Node):
             if self.rtde_c_2:
                 self.rtde_c_2.speedStop()
                 self.rtde_c_2.disconnect()
-            print("Disconnected from UR5 Robot")
+            print("Disconnected from UR5e Robot")
 
     def object1_callback(self, msg):
         """Callback for target object pose updates"""
@@ -179,10 +168,9 @@ class MocapListener(Node):
     def obstacle1_callback(self, msg):
         """Callback for obstacle pose updates"""
         pose = msg.pose
-        obstacle_pos = [-pose.position.x, -pose.position.y, pose.position.z]
-        obstacle_rot = [pose.orientation.w, pose.orientation.x, 
-                        pose.orientation.y, pose.orientation.z]
-        # self.planner.update_obstacle(obstacle_pos, obstacle_rot)
+        obstacle_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z])
+        obstacle_rot = np.array([0.0, 1.0, 0, 0])
+        self.planner.update_obstacle(obstacle_pos, obstacle_rot)
 
     def control_loop(self):
         """Main control loop running at fixed interval"""
@@ -205,8 +193,7 @@ class MocapListener(Node):
         
         
         # Compute control
-        thetadot, cost, cost_g, cost_r, cost_c = self.planner.compute_control(
-            current_pos, current_vel)
+        thetadot, cost, cost_g, cost_r, cost_c = self.planner.compute_control(current_pos, current_vel)
         
         if self.use_hardware:
             # Send velocity command
@@ -221,9 +208,8 @@ class MocapListener(Node):
             self.data.qvel[:self.planner.num_dof] = thetadot
             mujoco.mj_step(self.model, self.data)
 
-        theta = self.data.qpos[:self.planner.num_dof]
-
         if self.record_data_:
+            theta = self.data.qpos[:self.planner.num_dof]
             self.record_data(theta=theta, thetadot=thetadot)
         
         # Update viewer
@@ -236,6 +222,7 @@ class MocapListener(Node):
               f'Cost: {np.round(cost, 2)}')
         
     def record_data(self, theta, thetadot):
+        """Save data to csv file"""
         timestamp = time.time()
 
         setup = {
@@ -260,16 +247,16 @@ class MocapListener(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    mocap_listener = MocapListener()
+    planner = Planner()
     print("Initialized node.")
     
     try:
-        rclpy.spin(mocap_listener)
+        rclpy.spin(planner)
     except KeyboardInterrupt:
         print("Shutting down...")
     finally:
-        mocap_listener.close_connection()
-        mocap_listener.destroy_node()
+        planner.close_connection()
+        planner.destroy_node()
         rclpy.shutdown()
 
 if __name__ == '__main__':

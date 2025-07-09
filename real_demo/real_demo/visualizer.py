@@ -161,11 +161,11 @@ class Visualizer(Node):
         target_1 = json.loads(self.data_files['trajectory'][self.step_idx]['target_1'])
         target_2 = json.loads(self.data_files['trajectory'][self.step_idx]['target_2'])
 
-        self.model.body(name='target_1').pos = target_1[:3]
-        self.model.body(name='target_1').quat = target_1[3:]
+        self.model.body(name='target_0').pos = target_1[:3]
+        self.model.body(name='target_0').quat = target_1[3:]
 
-        self.model.body(name='target_2').pos = target_2[:3]
-        self.model.body(name='target_2').quat = target_2[3:]
+        self.model.body(name='target_1').pos = target_2[:3]
+        self.model.body(name='target_1').quat = target_2[3:]
 
         self.data.qpos[:12] = theta
 
@@ -197,11 +197,11 @@ class Visualizer(Node):
 
     def object1_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
-        self.model.body(name='target_1').pos = marker_pose
+        self.model.body(name='target_0').pos = marker_pose
 
     def object2_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
-        self.model.body(name='target_2').pos = marker_pose
+        self.model.body(name='target_1').pos = marker_pose
 
     def close_connection(self):
         self.rtde_c_1.speedStop()
@@ -221,8 +221,8 @@ class Visualizer(Node):
         }
         self.data_files['setup'].writerow(setup)
 
-        target_1 = np.concatenate((self.model.body(name='target_1').pos.tolist(), self.model.body(name='target_1').quat.tolist()), axis=None)
-        target_2 = np.concatenate((self.model.body(name='target_2').pos.tolist(), self.model.body(name='target_2').quat.tolist()), axis=None)
+        target_1 = np.concatenate((self.model.body(name='target_0').pos.tolist(), self.model.body(name='target_0').quat.tolist()), axis=None)
+        target_2 = np.concatenate((self.model.body(name='target_1').pos.tolist(), self.model.body(name='target_1').quat.tolist()), axis=None)
 
         step = {
             "timestamp" : timestamp,

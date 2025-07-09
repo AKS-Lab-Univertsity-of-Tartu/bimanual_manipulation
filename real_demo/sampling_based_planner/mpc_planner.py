@@ -1,571 +1,275 @@
-import numpy as np
-from mjx_planner import cem_planner
-import mujoco.mjx as mjx 
+from sampling_based_planner.mjx_planner import cem_planner
+from sampling_based_planner.quat_math import quaternion_distance
+from sampling_based_planner.Simple_MLP.mlp_singledof import MLP, MLPProjectionFilter
+from ik_based_planner.ik_solver import InverseKinematicsSolver
+
 import mujoco
-import time
+from mujoco import viewer
 import jax.numpy as jnp
 import jax
-import os
-from mujoco import viewer
-import matplotlib.pyplot as plt
-from quat_math import rotation_quaternion, quaternion_multiply, quaternion_distance
-import argparse
-import open3d as o3d
-from sklearn.neighbors import NearestNeighbors
-from functools import partial
-from Simple_MLP.mlp_singledof import MLP, MLPProjectionFilter
+
+import numpy as np
 import torch 
-import torch.nn as nn 
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
 import contextlib
 from io import StringIO
 
-import sys
-#Enable python to search for modules in the parent directory
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from ik_based_planner.ik_solver import InverseKinematicsSolver
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using {device} device")
-
-def robust_scale(input_nn: torch.Tensor) -> torch.Tensor:
-    """Normalize input using median and IQR"""
-    inp_median_ = torch.median(input_nn, dim=0).values
-    inp_q1 = torch.quantile(input_nn, 0.25, dim=0)
-    inp_q3 = torch.quantile(input_nn, 0.75, dim=0)
-    inp_iqr_ = inp_q3 - inp_q1
-    
-    # Handle constant features
-    inp_iqr_ = torch.where(inp_iqr_ == 0, 1.0, inp_iqr_)
-    
-    inp_norm = (input_nn - inp_median_) / inp_iqr_
-    return inp_norm
-
-
-def load_mlp_projection_model(num_feature, rnn_type, cem, maxiter_projection, device='cuda'):
-    enc_inp_dim = num_feature
-    mlp_inp_dim = enc_inp_dim
-    hidden_dim = 1024
-    mlp_out_dim = 2 * cem.nvar_single + cem.num_total_constraints_per_dof
-
-    mlp = MLP(mlp_inp_dim, hidden_dim, mlp_out_dim)
-    with contextlib.redirect_stdout(StringIO()):
-        model = MLPProjectionFilter(
-            mlp=mlp,
-            num_batch=cem.num_batch,
-            num_dof=cem.num_dof,
-            num_steps=cem.num,
-            timestep=cem.t,
-            v_max=cem.v_max,
-            a_max=cem.a_max,
-            j_max=cem.j_max,
-            p_max=cem.p_max,
+class run_cem_planner:
+    def __init__(self, model, data, num_dof=12, num_batch=500, num_steps=20, 
+                 maxiter_cem=1, maxiter_projection=5, w_pos=3.0, w_rot=0.5, 
+                 w_col=500.0, num_elite=0.05, timestep=0.05,
+                 position_threshold=0.06, rotation_threshold=0.1,
+                 ik_pos_thresh=0.06, ik_rot_thresh=0.1, 
+                 collision_free_ik_dt=0.5, inference=False, rnn=None,
+                 max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
+                 max_joint_acc=2.0, max_joint_jerk=4.0,
+                 device='cuda', table_1_pos=None, table_2_pos=None):
+        
+        # Initialize parameters
+        self.model = model
+        self.data = data
+        self.num_dof = num_dof
+        self.num_batch = num_batch
+        self.num_steps = num_steps
+        self.maxiter_cem = maxiter_cem
+        self.maxiter_projection = maxiter_projection
+        self.w_pos = w_pos
+        self.w_rot = w_rot
+        self.w_col = w_col
+        self.num_elite = num_elite
+        self.timestep = timestep
+        self.position_threshold = position_threshold
+        self.rotation_threshold = rotation_threshold
+        self.ik_pos_thresh = ik_pos_thresh if ik_pos_thresh else 1.1 * position_threshold
+        self.ik_rot_thresh = ik_rot_thresh if ik_rot_thresh else 1.1 * rotation_threshold
+        self.collision_free_ik_dt = collision_free_ik_dt
+        self.inference = inference
+        self.device = device
+        
+        # Initialize CEM planner
+        self.cem = cem_planner(
+            num_dof=num_dof, 
+            num_batch=num_batch, 
+            num_steps=num_steps, 
+            maxiter_cem=maxiter_cem,
+            w_pos=w_pos,
+            w_rot=w_rot,
+            w_col=w_col,
+            num_elite=num_elite,
+            timestep=timestep,
             maxiter_projection=maxiter_projection,
-        ).to(device)
+            max_joint_pos=max_joint_pos,
+            max_joint_vel=max_joint_vel,
+            max_joint_acc=max_joint_acc,
+            max_joint_jerk=max_joint_jerk,
+            table_1_pos=table_1_pos,
+            table_2_pos=table_2_pos
+        )
+        
+        # Initialize CEM variables
+        self.xi_mean_single = jnp.zeros(self.cem.nvar_single)
+        self.xi_cov_single = 10*jnp.identity(self.cem.nvar_single)
+        self.xi_mean = jnp.tile(self.xi_mean_single, self.cem.num_dof)
+        self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), self.xi_cov_single)
+        self.lamda_init = jnp.zeros((num_batch, self.cem.nvar))
+        self.s_init = jnp.zeros((num_batch, self.cem.num_total_constraints))
+        self.key = jax.random.PRNGKey(0)
+        
+        # Get references for both arms
+        self.target_pos_1 = model.body(name="target_0").pos
+        self.target_rot_1 = model.body(name="target_0").quat
+        self.target_pos_2 = model.body(name="target_1").pos
+        self.target_rot_2 = model.body(name="target_1").quat
+        
+        # Get obstacle reference
+        self.obstacle_pos = data.mocap_pos[
+            model.body_mocapid[model.body(name='obstacle').id]]
+        self.obstacle_rot = data.mocap_quat[
+            model.body_mocapid[model.body(name='obstacle').id]]
+        
+        # Get TCP references for both arms
+        self.tcp_id_1 = model.site(name="tcp").id
+        self.hande_id_1 = model.body(name="hande").id
+        self.tcp_id_2 = model.site(name="tcp_2").id
+        self.hande_id_2 = model.body(name="hande_2").id
+        
+        # Initialize MLP if inference is enabled
+        if inference:
+            self.mlp_model = self._load_mlp_projection_model(
+                num_steps + 1 + 1, rnn, maxiter_projection)
 
-        weight_path = f'./training_weights/mlp_learned_single_dof.pth'
-        model.load_state_dict(torch.load(weight_path, weights_only=True))
-        model.eval()
-    
-    return model
+    def _load_mlp_projection_model(self, num_feature, rnn_type, maxiter_projection):
+        """Load the MLP projection model for inference"""
+        enc_inp_dim = num_feature
+        mlp_inp_dim = enc_inp_dim
+        hidden_dim = 1024
+        mlp_out_dim = 2 * self.cem.nvar_single + self.cem.num_total_constraints_per_dof
 
-def append_torch_tensors(variable_single_dof, variable_multi_dof):
-    if isinstance(variable_multi_dof, list):
-        if len(variable_multi_dof) == 0:
-            return variable_single_dof
-        else:
+        mlp = MLP(mlp_inp_dim, hidden_dim, mlp_out_dim)
+        with contextlib.redirect_stdout(StringIO()):
+            model = MLPProjectionFilter(
+                mlp=mlp,
+                num_batch=self.num_batch,
+                num_dof=self.num_dof,
+                num_steps=self.num_steps,
+                timestep=self.timestep,
+                v_max=self.cem.v_max,
+                a_max=self.cem.a_max,
+                j_max=self.cem.j_max,
+                p_max=self.cem.p_max,
+                maxiter_projection=maxiter_projection,
+            ).to(self.device)
+
+            weight_path = './training_weights/mlp_learned_single_dof.pth'
+            model.load_state_dict(torch.load(weight_path, weights_only=True))
+            model.eval()
+        
+        return model
+
+    def _robust_scale(self, input_nn):
+        """Normalize input using median and IQR"""
+        inp_median_ = torch.median(input_nn, dim=0).values
+        inp_q1 = torch.quantile(input_nn, 0.25, dim=0)
+        inp_q3 = torch.quantile(input_nn, 0.75, dim=0)
+        inp_iqr_ = inp_q3 - inp_q1
+        
+        # Handle constant features
+        inp_iqr_ = torch.where(inp_iqr_ == 0, 1.0, inp_iqr_)
+        
+        return (input_nn - inp_median_) / inp_iqr_
+
+    def _append_torch_tensors(self, variable_single_dof, variable_multi_dof):
+        """Helper function to append tensors"""
+        if isinstance(variable_multi_dof, list):
+            if len(variable_multi_dof) == 0:
+                return variable_single_dof
             variable_multi_dof = torch.stack(variable_multi_dof, dim=0)
-    
-    variable_multi_dof = torch.cat([variable_multi_dof, variable_single_dof], dim=1)
-    return variable_multi_dof
+        
+        return torch.cat([variable_multi_dof, variable_single_dof], dim=1)
 
-def run_cem_planner(
-    num_dof=None,
-    num_batch=None,
-    num_steps=None,
-    maxiter_cem=None,
-    maxiter_projection=None,
-    w_pos=None,
-    w_rot=None,
-    w_col=None,
-    num_elite=None,
-    timestep=None,
-    initial_qpos=None,
-    ik_pos_thresh=None,
-    ik_rot_thresh=None,
-    collision_free_ik_dt=None,
-    target_names=None,
-    show_viewer=None,
-    cam_distance=None,
-    show_contact_points=None,
-    position_threshold=None,
-    rotation_threshold=None,
-    save_data=None,
-    data_dir=None,
-    stop_at_final_target=None,
-    inference=None,
-    rnn=None,
-    max_joint_pos=None,
-    max_joint_vel=None,
-    max_joint_acc=None,
-    max_joint_jerk=None,
-    generate_pcd=None,
-    accumulate_pcd=None,
-    pcd_interval=None,
-    cam_name=None,
-):
-    # Initialize data structures
-    index_list = []
-    cost_g_list = []
-    cost_r_list = []
-    cost_c_list = []
-    cost_list = []
-    thetadot_list = []
-    theta_list = []
-    best_vel_list = []
-    avg_primal_residual_list = []
-    avg_fixed_point_residual_list = []
-    best_cost_primal_residual_list = []
-    best_cost_fixed_point_residual_list = []
-    target_pos_list = []
-    target_quat_list = []
+    def update_targets(self, target_idx=1, target_pos=None, target_rot=None):
+        """Update target positions and rotations for both arms"""
+        if target_idx==1:
+            self.target_pos_1 = target_pos
+            self.target_rot_1 = target_rot
+        elif target_idx==2:
+            self.target_pos_2 = target_pos
+            self.target_rot_2 = target_rot
+        
+    def update_obstacle(self, obstacle_pos, obstacle_rot):
+        """Update obstacle position and rotation"""
+        self.obstacle_pos = obstacle_pos
+        self.obstacle_rot = obstacle_rot
+        
+    def compute_control(self, current_pos, current_vel):
+        """Compute optimal control using CEM/MPC for dual-arm system"""
+        # Update MuJoCo state
+        self.data.qpos[:self.num_dof] = current_pos
+        self.data.qvel[:self.num_dof] = current_vel
+        mujoco.mj_forward(self.model, self.data)
+        
+        # Handle covariance matrix numerical stability
+        if np.isnan(self.xi_cov).any():
+            self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))
+        
+        if np.isnan(self.xi_mean).any():
 
-    # Initialize CEM planner
-    cem = cem_planner(
-        num_dof=num_dof, 
-        num_batch=num_batch, 
-        num_steps=num_steps, 
-        maxiter_cem=maxiter_cem,
-        w_pos=w_pos,
-        w_rot=w_rot,
-        w_col=w_col,
-        num_elite=num_elite,
-        timestep=timestep,
-        maxiter_projection=maxiter_projection,
-        max_joint_pos=max_joint_pos,
-        max_joint_vel=max_joint_vel,
-        max_joint_acc=max_joint_acc,
-        max_joint_jerk=max_joint_jerk
-    )
+            self.xi_mean = jnp.zeros(self.cem.nvar)
 
-    model = cem.model
-    data = cem.data
+        try:
+            np.linalg.cholesky(self.xi_cov)
+        except np.linalg.LinAlgError:
+            self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))  
+        
+        # Generate samples
+        self.xi_samples, self.key = self.cem.compute_xi_samples(
+            self.key, self.xi_mean, self.xi_cov)
+        xi_samples_reshaped = self.xi_samples.reshape(
+            self.num_batch, self.cem.num_dof, self.cem.nvar_single)
 
-    
-    
-    # Defining Obstacle position here is not needed as that is taken from environment
-    # For mujoco (official Python bindings):
-    obstacle_indices = [i for i in range(cem.model.nbody) 
-                    if cem.model.body(i).name.startswith("obstacle_")]
-    obst_pos = [cem.mjx_data.xpos[i] for i in obstacle_indices]
-    obst_quat = [cem.mjx_data.xquat[i] for i in obstacle_indices]
-
-    data.qpos[:num_dof] = jnp.array(initial_qpos)
-    mujoco.mj_forward(model, data)
-
-    
-
-    # Initialize CEM variables
-    xi_mean_single = jnp.zeros(cem.nvar_single)
-    xi_cov_single = 10*jnp.identity(cem.nvar_single)
-    xi_mean_init = jnp.tile(xi_mean_single, cem.num_dof)
-    xi_cov_init = jnp.kron(jnp.eye(cem.num_dof), xi_cov_single)
-    xi_mean = xi_mean_init
-    xi_cov = xi_cov_init
-    xi_samples, key = cem.compute_xi_samples(cem.key, xi_mean, xi_cov)
-    lamda_init = jnp.zeros((cem.num_batch, cem.nvar))
-    s_init = jnp.zeros((cem.num_batch, cem.num_total_constraints))
-
-    #Initialize EE pose
-    init_position_1 = data.site_xpos[model.site(name="tcp").id].copy()
-    init_rotation_1 = data.xquat[model.body(name="hande").id].copy()
-
-    init_position_2 = data.site_xpos[model.site(name="tcp_2").id].copy()
-    init_rotation_2 = data.xquat[model.body(name="hande_2").id].copy()
-
-    # Load MLP model if inference is enabled
-    if inference:
-        mlp_model = load_mlp_projection_model(
-            num_steps + 1 + 1, rnn, cem, maxiter_projection, device=device)
-
-    timestep_counter = 0
-    target_idx = 0
-    current_target = target_names[target_idx]
-    target_reached = False #Initialize
-
-    target_positions_1 = [
-        [-0.3, 0.3, 0.3],
-        [-0.1, -0.35, 0.6],
-        [-0.3, -0.1, 0.3],
-        init_position_1
-    ]
-
-    target_rotations_1 = [
-        rotation_quaternion(-135, np.array([1,0,0])),
-        quaternion_multiply(rotation_quaternion(90, np.array([0,0,1])),rotation_quaternion(135, np.array([1,0,0]))),
-        quaternion_multiply(rotation_quaternion(180, np.array([0,0,1])),rotation_quaternion(-90, np.array([0,1,0]))),
-        init_rotation_1
-    ]
-
-    target_positions_2 = [
-        [-0.3, -0.3, 0.3],
-        [-0.3, 0.4, 0.6],
-        [-0.3, 0.1, 0.3],
-        init_position_2
-    ]
-
-    target_rotations_2 = [
-        quaternion_multiply(rotation_quaternion(180, np.array([0,0,1])), rotation_quaternion(135, np.array([1,0,0]))),
-        quaternion_multiply(rotation_quaternion(-90, np.array([0,0,1])),rotation_quaternion(-135, np.array([1,0,0]))),
-        quaternion_multiply(rotation_quaternion(0, np.array([0,0,1])),rotation_quaternion(90, np.array([0,1,0]))),
-        init_rotation_2
-    ]
-
-    target_idx = 0
-
-    target_pos_1 = model.body(name="target_0").pos
-    target_quat_1 = model.body(name="target_0").quat
-    target_pos_2 = model.body(name="target_1").pos
-    target_quat_2 = model.body(name="target_1").quat
-
-    if show_viewer:
-        with viewer.launch_passive(model, data) as viewer_:
-            viewer_.cam.distance = cam_distance
-            viewer_.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = show_contact_points
+        # MLP inference if enabled
+        if self.inference:
+            xi_projected_nn_output = []
+            lamda_init_nn_output = []
+            s_init_nn_output = []
             
-            try:
-                while viewer_.is_running():
-                    timestep_counter += 1
-                    start_time = time.time()
-
-                    if np.isnan(xi_cov).any():
-                        xi_cov = xi_cov_init
-                    if np.isnan(xi_mean).any():
-                        xi_mean = xi_mean_init
-
-                    try:
-                        np.linalg.cholesky(xi_cov)
-                    except np.linalg.LinAlgError:
-                        xi_cov = xi_cov_init    
-
-                    xi_samples, key = cem.compute_xi_samples(cem.key, xi_mean, xi_cov)
-                    xi_samples_reshaped = xi_samples.reshape(cem.num_batch, cem.num_dof, cem.nvar_single)
-
-                    if inference:
-                        xi_projected_nn_output = []
-                        lamda_init_nn_output = []
-                        s_init_nn_output = []
-                        
-                        for i in range(cem.num_dof):
-                            theta_init = np.tile(data.qpos[i], (num_batch,1))
-                            v_start = np.tile(data.qvel[i], (num_batch,1)) 
-                            xi_samples_single = xi_samples_reshaped[:, i, :]
-                            inp = np.hstack([xi_samples_single, theta_init, v_start])
-                            inp_torch = torch.tensor(inp).float().to(device)
-                            inp_norm_torch = robust_scale(inp_torch)
-                            neural_output_batch = mlp_model.mlp(inp_norm_torch)
-                            
-                            xi_projected_nn_output_single = neural_output_batch[:, :cem.nvar_single]
-                            lamda_init_nn_output_single = neural_output_batch[:, cem.nvar_single: 2*cem.nvar_single]
-                            s_init_nn_output_single = neural_output_batch[:, 2*cem.nvar_single: 2*cem.nvar_single + cem.num_total_constraints_per_dof]
-                            s_init_nn_output_single = torch.maximum(torch.zeros((cem.num_batch, cem.num_total_constraints_per_dof), device=device), s_init_nn_output_single)
-                            
-                            xi_projected_nn_output = append_torch_tensors(xi_projected_nn_output_single, xi_projected_nn_output)
-                            lamda_init_nn_output = append_torch_tensors(lamda_init_nn_output_single, lamda_init_nn_output)
-                            s_init_nn_output = append_torch_tensors(s_init_nn_output_single, s_init_nn_output)
-                        
-                        lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
-                        s_init = np.array(s_init_nn_output.cpu().detach().numpy())
-
-                    # CEM computation
-                    cost, best_cost_g, best_cost_r, best_cost_c, best_vels, best_traj, \
-                    xi_mean, xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
-                    primal_res, fixed_res, idx_min = cem.compute_cem(
-                        xi_mean,
-                        xi_cov,
-                        data.qpos[:num_dof],
-                        data.qvel[:num_dof],
-                        data.qacc[:num_dof],
-                        target_pos_1,
-                        target_quat_1,
-                        target_pos_2,
-                        target_quat_2,
-                        lamda_init,
-                        s_init,
-                        xi_samples
-                    )
-
-                    # Check target convergence
-                    # current_cost_g = np.linalg.norm(data.site_xpos[cem.tcp_id] - target_pos)   
-                    # current_cost_r = quaternion_distance(data.xquat[cem.hande_id], target_quat)
-                    # current_cost = np.round(cost, 2)
-
-                    current_cost_g_1 = np.linalg.norm(data.site_xpos[cem.tcp_id] - target_pos_1)
-                    current_cost_r_1 = quaternion_distance(data.xquat[cem.hande_id], target_quat_1)
-
-                    current_cost_g_2 = np.linalg.norm(data.site_xpos[cem.tcp_id_2] - target_pos_2)
-                    current_cost_r_2 = quaternion_distance(data.xquat[cem.hande_id_2], target_quat_2)
-
-                    current_cost_g = (current_cost_g_1 + current_cost_g_2)/2  
-                    current_cost_r = (current_cost_r_1 + current_cost_r_2)/2    
-                    current_cost = np.round(cost, 2)
-                    
-                    if current_cost_g < position_threshold and current_cost_r < rotation_threshold:
-                        target_reached = True
-                    else:
-                        target_reached = False
-
-                    if target_reached:
-                        if target_idx == len(target_positions_1) - 1: #At last target
-                            if stop_at_final_target:
-                                data.qvel[:num_dof] = np.zeros(num_dof)
-                            # else:
-                            #     target_idx = -1
-                                # current_target = target_names[target_idx]
-                            
-                        else:
-                            target_idx += 1
-                            
-                            model.body(name="target_0").pos = target_positions_1[target_idx]
-                            model.body(name="target_0").quat = target_rotations_1[target_idx]
-                            model.body(name="target_1").pos = target_positions_2[target_idx]
-                            model.body(name="target_1").quat = target_rotations_2[target_idx]
-                            # current_target = target_names[target_idx]
-                    
-                    thetadot_cem = np.mean(best_vels[1:int(num_steps*0.9)], axis=0)
-
-                    #ACtivate  collision free IK if cost position/rotation is less than ik_threshold
-                    if current_cost_g_1 < ik_pos_thresh and current_cost_r_1 < ik_rot_thresh:
-                        collision_free_ik_1 = True
-                    else:
-                        collision_free_ik_1 = False
-
-                    if collision_free_ik_1:
-                        #Collision Free IK
-                        ik_solver_1 = InverseKinematicsSolver(cem.model, data.qpos[:num_dof], "tcp")
-
-                        ik_solver_1.set_target(target_pos_1, target_quat_1)
-
-                        print("\n" + "-" * 10)
-                        print(">>> COLLISION-FREE IK IS ACTIVATED <<<")
-                        print("-" * 10 + "\n")
-                    
-                        # Apply control as per MPC coupled with  CEM
-                        thetadot_1 = ik_solver_1.solve(dt=collision_free_ik_dt)[:num_dof//2]
-
-                    else:    
-                        # Apply control as per MPC coupled with  CEM
-                        thetadot_1 = thetadot_cem[:num_dof//2]
-
-
-
-                    if current_cost_g_2 < ik_pos_thresh and current_cost_r_2 < ik_rot_thresh:
-                        collision_free_ik_2 = True
-                    else:
-                        collision_free_ik_2 = False
-
-                    if collision_free_ik_2:
-                        #Collision Free IK
-                        ik_solver_2 = InverseKinematicsSolver(cem.model, data.qpos[:num_dof], "tcp_2")
-
-                        ik_solver_2.set_target(target_pos_2, target_quat_2)
-
-                        print("\n" + "-" * 10)
-                        print(">>> COLLISION-FREE IK IS ACTIVATED <<<")
-                        print("-" * 10 + "\n")
-                    
-                        # Apply control as per MPC coupled with  CEM
-                        thetadot_2 = ik_solver_2.solve(dt=collision_free_ik_dt)[num_dof//2:num_dof]
-                    else:    
-
-                        # Apply control as per MPC coupled with  CEM
-                        thetadot_2 = thetadot_cem[num_dof//2:num_dof]
-
-                    thetadot = np.concatenate((thetadot_1, thetadot_2), axis=None)
-                    
-                    data.qvel[:num_dof] = thetadot
-
-                    # Step the simulation
-                    mujoco.mj_step(model, data)
-
-                        
-
-                    # Store data
-                    index_list.append(timestep_counter)
-                    cost_g_list.append(best_cost_g)
-                    cost_r_list.append(best_cost_r)
-                    cost_c_list.append(best_cost_c)
-                    thetadot_list.append(thetadot)
-                    theta_list.append(data.qpos[:num_dof].copy())
-                    cost_list.append(current_cost[-1] if isinstance(current_cost, np.ndarray) else current_cost)
-                    best_vel_list.append(best_vels)
-                    avg_primal_residual_list.append(np.mean(avg_primal_res, axis=1))
-                    avg_fixed_point_residual_list.append(np.mean(avg_fixed_res, axis=1))
-                    best_cost_primal_residual_list.append(avg_primal_res[:, idx_min])
-                    best_cost_fixed_point_residual_list.append(avg_fixed_res[:, idx_min])
-                    
-                    #if not any(np.allclose(pos_, target_pos) for pos_ in target_pos_list):
-                    target_pos_list.append(target_pos_1.copy())
-                    #if not any(np.allclose(quat_, target_quat) for quat_ in target_quat_list):
-                    target_quat_list.append(target_quat_1.copy())
-                    
-                    
-                    # Print status
-
-                    print(f'Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms | Cost g: {"%.2f"%(float(current_cost_g))}'
-                        f' | Cost r: {"%.2f"%(float(current_cost_r))} | Cost c: {"%.2f"%(float(best_cost_c))} | Cost: {current_cost}')
-                    # print(f'eef_quat: {data.xquat[cem.hande_id]}')
-                    # print(f'eef_pos', data.site_xpos[cem.tcp_id])
-                    print(f'target: {current_target}')
-                    # print(f'target_pos', target_pos)
-                    print(f'timetstep_counter:{timestep_counter}')
-                    print(f'target_reached: {target_reached}')
-
-                    # Update viewer
-                    viewer_.sync()
-                    time_until_next_step = model.opt.timestep - (time.time() - start_time)
-                    if time_until_next_step > 0:
-                        time.sleep(time_until_next_step)
-
-            except KeyboardInterrupt:
-                print("Interrupted by user!")
-            
-            finally:
+            for i in range(self.cem.num_dof):
+                theta_init = np.tile(self.data.qpos[i], (self.num_batch, 1))
+                v_start = np.tile(self.data.qvel[i], (self.num_batch, 1))
+                xi_samples_single = xi_samples_reshaped[:, i, :]
+                inp = np.hstack([xi_samples_single, theta_init, v_start])
+                inp_torch = torch.tensor(inp).float().to(self.device)
+                inp_norm_torch = self._robust_scale(inp_torch)
+                neural_output_batch = self.mlp_model.mlp(inp_norm_torch)
                 
-                # Save Motion data
-                if save_data:
-                    print("Saving Motion, Target and Obstacle data ...")
-                    os.makedirs(data_dir, exist_ok=True)
+                xi_projected_nn_output_single = neural_output_batch[:, :self.cem.nvar_single]
+                lamda_init_nn_output_single = neural_output_batch[:, self.cem.nvar_single: 2*self.cem.nvar_single]
+                s_init_nn_output_single = neural_output_batch[:, 2*self.cem.nvar_single: 2*self.cem.nvar_single + self.cem.num_total_constraints_per_dof]
+                s_init_nn_output_single = torch.maximum(
+                    torch.zeros((self.num_batch, self.cem.num_total_constraints_per_dof), device=self.device), 
+                    s_init_nn_output_single)
+                
+                xi_projected_nn_output = self._append_torch_tensors(
+                    xi_projected_nn_output_single, xi_projected_nn_output)
+                lamda_init_nn_output = self._append_torch_tensors(
+                    lamda_init_nn_output_single, lamda_init_nn_output)
+                s_init_nn_output = self._append_torch_tensors(
+                    s_init_nn_output_single, s_init_nn_output)
+            
+            self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
+            self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
-                    #Saving Motion data
-                    print("Saving Motion data...")
-                    np.savetxt(f'{data_dir}/index.csv', index_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/costs.csv', cost_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/thetadot.csv', thetadot_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/theta.csv', theta_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/cost_g.csv', cost_g_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/cost_r.csv', cost_r_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/cost_c.csv', cost_c_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/avg_primal_residual.csv', avg_primal_residual_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/avg_fixed_point_residual.csv', avg_fixed_point_residual_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/best_cost_primal_residual.csv', best_cost_primal_residual_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/best_cost_fixed_point_residual.csv', best_cost_fixed_point_residual_list, delimiter=",")
-                    np.save(f'{data_dir}/best_vels.npy', np.array(best_vel_list))
-                    print("Motion data saved!")
-                    
-                    # Save Target positions and orientations
-                    print("Saving Target positions and orientations...")
-                    np.savetxt(f'{data_dir}/target_positions.csv', target_pos_list, delimiter=",")
-                    np.savetxt(f'{data_dir}/target_quaternions.csv', target_quat_list, delimiter=",")
-                    print("Target positions and orientations saved!")
-                    # Save Obstacle positions and orientations
-                    print("Saving Obstacle positions and orientations...")
-                    np.savetxt(f'{data_dir}/obstacle_positions.csv', obst_pos, delimiter=",")
-                    np.savetxt(f'{data_dir}/obstacle_quaternions.csv', obst_quat, delimiter=",")
-                    print("Obstacle positions and orientations saved!")
-                    print(f"Motion, Target and Obstacle data saved to {data_dir}")
+        # CEM computation
+        cost, best_cost_g, best_cost_r, best_cost_c, best_vels, best_traj, \
+        self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
+        primal_res, fixed_res, idx_min = self.cem.compute_cem(
+            self.xi_mean,
+            self.xi_cov,
+            current_pos,
+            current_vel,
+            np.zeros(self.num_dof),  # Zero initial acceleration
+            self.target_pos_1,
+            self.target_rot_1,
+            self.target_pos_2,
+            self.target_rot_2,
+            self.lamda_init,
+            self.s_init,
+            self.xi_samples
+        )
 
-                # Save accumulated point cloud
-                if generate_pcd and accumulate_pcd:
-                    print("Saving accumulated point cloud...")
-                    pcd_gen.save_accumulated_pcd()    
+        # Get mean velocity command (average middle 80% of trajectory)
+        thetadot_cem = np.mean(best_vels[1:int(self.num_steps*0.9)], axis=0)
 
-    return {
-        'cost_g': cost_g_list,
-        'cost_r': cost_r_list,
-        'cost_c': cost_c_list,
-        'cost': cost_list,
-        'thetadot': thetadot_list,
-        'theta': theta_list,
-        'best_vels': best_vel_list,
-        'primal_residual': avg_primal_residual_list,
-        'fixed_point_residual': avg_fixed_point_residual_list,
-        'best_cost_primal_residual': best_cost_primal_residual_list,
-        'best_cost_fixed_point_residual': best_cost_fixed_point_residual_list
-    }
+        # Check if we should switch to collision-free IK for each arm
+        current_cost_g_1 = np.linalg.norm(
+            self.data.site_xpos[self.tcp_id_1] - self.target_pos_1)
+        current_cost_r_1 = quaternion_distance(
+            self.data.xquat[self.hande_id_1], self.target_rot_1)
+            
+        current_cost_g_2 = np.linalg.norm(
+            self.data.site_xpos[self.tcp_id_2] - self.target_pos_2)
+        current_cost_r_2 = quaternion_distance(
+            self.data.xquat[self.hande_id_2], self.target_rot_2)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run CEM planner with configurable parameters')
-    
-    # CEM planner parameters
-    parser.add_argument('--num_dof', type=int, default=6)
-    parser.add_argument('--num_batch', type=int, default=1000)
-    parser.add_argument('--num_steps', type=int, default=16)
-    parser.add_argument('--maxiter_cem', type=int, default=1)
-    parser.add_argument('--w_pos', type=float, default=20.0)
-    parser.add_argument('--w_rot', type=float, default=3.0)
-    parser.add_argument('--w_col', type=float, default=10.0)
-    parser.add_argument('--num_elite', type=float, default=0.05)
-    parser.add_argument('--timestep', type=float, default=0.05)
-    parser.add_argument('--maxiter_projection', type=int, default=5)
-    
-    # Initial configuration
-    parser.add_argument('--initial_qpos', type=float, nargs='+', default=[1.5, -1.8, 1.75, -1.25, -1.6, 0])
-    
-    # Visualization options
-    parser.add_argument('--no_viewer', action='store_true')
-    parser.add_argument('--cam_distance', type=float, default=4)
-    parser.add_argument('--no_contact_points', action='store_true')
-    
-    # Convergence criteria
-    parser.add_argument('--position_threshold', type=float, default=0.04)
-    parser.add_argument('--rotation_threshold', type=float, default=0.3)
-    
-    # Target sequence
-    parser.add_argument('--targets', type=str, nargs='+', default=["target_0", "target_1", "home"])
-    
-    # Save data
-    parser.add_argument('--save_data', action='store_true')
-    parser.add_argument('--data_dir', type=str, default='data')
-    parser.add_argument('--continue_after_final', action='store_true')
-    
-    # MLP parameters
-    parser.add_argument('--inference', action='store_true')
-    parser.add_argument('--rnn', type=str, default=None)
-    parser.add_argument('--max_joint_pos', type=float, default=None)
-    parser.add_argument('--max_joint_vel', type=float, default=None)
-    parser.add_argument('--max_joint_acc', type=float, default=None)
-    parser.add_argument('--max_joint_jerk', type=float, default=None)
-    
-    # Point cloud parameters
-    parser.add_argument('--generate_pcd', action='store_true')
-    parser.add_argument('--accumulate_pcd', action='store_true')
-    parser.add_argument('--pcd_interval', type=int, default=10)
-    parser.add_argument('--cam_name', type=str, default="camera1")
-    
-    args = parser.parse_args()
-    
-    run_cem_planner(
-        num_dof=args.num_dof,
-        num_batch=args.num_batch,
-        num_steps=args.num_steps,
-        maxiter_cem=args.maxiter_cem,
-        maxiter_projection=args.maxiter_projection,
-        w_pos=args.w_pos,
-        w_rot=args.w_rot,
-        w_col=args.w_col,
-        num_elite=args.num_elite,
-        timestep=args.timestep,
-        initial_qpos=args.initial_qpos,
-        target_names=args.targets,
-        show_viewer=not args.no_viewer,
-        cam_distance=args.cam_distance,
-        show_contact_points=not args.no_contact_points,
-        position_threshold=args.position_threshold,
-        rotation_threshold=args.rotation_threshold,
-        save_data=args.save_data,
-        data_dir=args.data_dir,
-        stop_at_final_target=not args.continue_after_final,
-        inference=args.inference,
-        rnn=args.rnn,
-        max_joint_pos=args.max_joint_pos,
-        max_joint_vel=args.max_joint_vel,
-        max_joint_acc=args.max_joint_acc,
-        max_joint_jerk=args.max_joint_jerk,
-        generate_pcd=args.generate_pcd,
-        accumulate_pcd=args.accumulate_pcd,
-        pcd_interval=args.pcd_interval,
-        cam_name=args.cam_name
-    )
+        # Arm 1 control
+        if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
+            ik_solver_1 = InverseKinematicsSolver(
+                self.model, current_pos, "tcp")
+            ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
+            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[:self.num_dof//2]
+        else:
+            thetadot_1 = thetadot_cem[:6]
+        
+        # Arm 2 control
+        if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
+            ik_solver_2 = InverseKinematicsSolver(
+                self.model, current_pos, "tcp_2")
+            ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
+            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[:self.num_dof//2]
+        else:
+            thetadot_2 = thetadot_cem[6:]
+
+        # Combine control commands
+        thetadot = np.concatenate((thetadot_1, thetadot_2))
+        
+        return thetadot, cost, best_cost_g, best_cost_r, best_cost_c
