@@ -26,12 +26,12 @@
         <geom name="obstacle" pos="0 0 0" rgba="0.6 0 0 1" size="0.05" type="sphere"/>
     </body>
 
-    <body name="table1_marker" pos="-0.496 -0.575 0" >
+    <body name="table1_marker" pos="-0.496 -0.575 0.05" >
         <geom name="table1_marker" pos="0 0 0" rgba="1 1 1 0.6" size="0.05 0.05 0.025" type="box" contype="0" conaffinity="0"/>
     </body>
 
-    <body name="table2_marker" pos="-0.951 0.695 0" >
-        <geom name="table2_marker" pos="0 0 0" rgba="1 1 1 0.6" size="0.025 0.025 0.025" type="box" contype="0" conaffinity="0"/>
+    <body name="table2_marker" pos="-0.956 0.335 0.03" >
+        <geom name="table2_marker" pos="0 0 0" rgba="1 1 1 0.6" size="0.04 0.04 0.015" type="box" contype="0" conaffinity="0"/>
     </body>
 
     

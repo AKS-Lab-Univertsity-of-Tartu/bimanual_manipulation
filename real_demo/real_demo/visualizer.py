@@ -67,9 +67,9 @@ class Visualizer(Node):
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         if self.use_hardware:
-            self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]     
+            self.viewer.cam.lookat[:] = [-3.0, 0.0, 0.8]     
         else:
-            self.viewer.cam.lookat[:] = [0.0, 0.0, 0.8]  
+            self.viewer.cam.lookat[:] = [-3.0, 0.0, 0.8] #[0.0, 0.0, 0.8]  
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
@@ -165,8 +165,9 @@ class Visualizer(Node):
             theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
             self.data.qpos[:self.num_dof] = theta
         elif self.folder=="planner":
-            thetadot_horizon = json.loads(self.data_files['trajectory'][self.step_idx]['thetadot_horizon'])
-            self.data.qvel[:self.num_dof] = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
+            theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
+            # self.data.qvel[:self.num_dof] = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
+            self.data.qpos[:self.num_dof] = theta
 
         target_1 = json.loads(self.data_files['trajectory'][self.step_idx]['target_1'])
         target_2 = json.loads(self.data_files['trajectory'][self.step_idx]['target_2'])
@@ -177,7 +178,7 @@ class Visualizer(Node):
         self.model.body(name='target_1').pos = target_2[:3]
         self.model.body(name='target_1').quat = target_2[3:]
 
-        mujoco.mj_step(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
         self.viewer.sync()
 
         if self.step_idx < len(self.data_files['trajectory'])-1:
