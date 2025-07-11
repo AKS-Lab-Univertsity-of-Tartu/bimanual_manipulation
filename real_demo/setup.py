@@ -11,6 +11,8 @@ data_files=[
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', 'gripper_srv', 'srv'), glob('srv/*.srv')),
+        (os.path.join('share', 'gripper_srv', 'srv'), glob('srv/*.msg')),
     ]
 
 folders = ['ur5e_hande_mjx', 'mj_planner', 'data', 'ik_based_planner', 'collision_free_ik', 'sampling_based_planner']

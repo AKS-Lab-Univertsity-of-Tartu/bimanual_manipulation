@@ -14,9 +14,14 @@ import mujoco
 from mujoco import viewer
 
 from sampling_based_planner.mpc_planner import run_cem_planner
+from sampling_based_planner.quat_math import quaternion_distance
+
 
 from rtde_control import RTDEControlInterface as RTDEControl
 from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+from gripper_srv.srv import GripperService
+
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
@@ -75,6 +80,9 @@ class Planner(Node):
             self.data_files['setup'].writeheader()
             self.data_files['trajectory'].writeheader()
 
+        self.grab_pos_thresh = 0.06
+        self.grab_rot_thresh = 0.1
+
         # Initialize robot connection
         self.rtde_c_1 = None
         self.rtde_r_1 = None
@@ -89,6 +97,27 @@ class Planner(Node):
 
                 self.rtde_c_2 = RTDEControl("192.168.0.124")
                 self.rtde_r_2 = RTDEReceive("192.168.0.124")
+
+                self.grippers = {
+                    '1': {
+                        'srv': None,
+                        'state': 'open'
+                    },
+                    '2': {
+                        'srv': None,
+                        'state': 'open'
+                    }
+                }
+
+                self.grippers['1']['srv'] = self.create_client(GripperService, 'gripper_1/gripper_service')
+                while not self.grippers['1']['srv'].wait_for_service(timeout_sec=1.0):
+                    self.get_logger().info('Gripper 1 service not available, waiting again...')
+
+                self.grippers['2']['srv'] = self.create_client(GripperService, 'gripper_2/gripper_service')
+                while not self.grippers['2']['srv'].wait_for_service(timeout_sec=1.0):
+                    self.get_logger().info('Gripper 2 service not available, waiting again...')
+
+                self.req = GripperService.Request()
                 print("Connection with UR5e established.", flush=True)
             except Exception as e:
                 print(f"Could not connect to robot: {e}", flush=True)
@@ -163,6 +192,8 @@ class Planner(Node):
         """Move robot to initial joint position"""
         self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
         self.rtde_c_2.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
+        self.gripper_control(gripper_idx=1, action='open') 
+        self.gripper_control(gripper_idx=2, action='open') 
         print("Moved to initial pose.", flush=True)
 
     def close_connection(self):
@@ -240,6 +271,24 @@ class Planner(Node):
             self.data.qvel[:self.planner.num_dof] = thetadot
             mujoco.mj_step(self.model, self.data)
 
+        current_cost_g_1 = np.linalg.norm(
+            self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_pos_1)
+        current_cost_r_1 = quaternion_distance(
+            self.data.xquat[self.planner.hande_id_1], self.planner.target_rot_1)
+            
+        current_cost_g_2 = np.linalg.norm(
+            self.data.site_xpos[self.planner.tcp_id_2] - self.planner.target_pos_2)
+        current_cost_r_2 = quaternion_distance(
+            self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
+        
+        if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
+            if self.grippers['2']['status']=='open':
+                self.gripper_control(gripper_idx=2, action='close') 
+        
+        if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
+            if self.grippers['1']['status']=='open':
+                self.gripper_control(gripper_idx=1, action='close')
+
         if self.record_data_:
             theta = self.data.qpos[:self.planner.num_dof]
             self.record_data(theta=theta, thetadot=thetadot, theta_horizon=theta_horizon, thetadot_horizon=thetadot_horizon)
@@ -251,7 +300,22 @@ class Planner(Node):
         print(f'Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms | '
               f'Cost g: {"%.2f"%(float(cost_g))} | '
               f'Cost c: {"%.2f"%(float(cost_c))} | '
+              f'Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} | '
+              f'Cost gr2: {"%.2f, %.2f"%(float(current_cost_g_2), float(current_cost_r_2))} | '
               f'Cost: {np.round(cost, 2)}', flush=True)
+        
+    def gripper_control(self, gripper_idx=1, action='open'):
+        if action == 'open':
+            self.req.position = 0
+        elif action == 'close':
+            self.req.position = 100
+        self.req.speed = 255
+        self.req.force = 255
+        resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
+        self.grippers[str(gripper_idx)]['status'] = action
+
+        print(f"Gripper {gripper_idx} has complited {action} action.")
+    
         
     def record_data(self, theta, thetadot, theta_horizon, thetadot_horizon):
         """Save data to csv file"""
