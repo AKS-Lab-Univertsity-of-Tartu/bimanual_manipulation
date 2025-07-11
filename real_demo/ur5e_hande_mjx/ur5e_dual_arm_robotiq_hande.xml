@@ -24,7 +24,7 @@
       </default>
 
       <default class="collision">
-        <geom type="capsule" contype="1" conaffinity="1" group="3"/>
+        <geom type="capsule" contype="1" conaffinity="1" group="2"/>
       </default>
 
     </default>
@@ -188,18 +188,20 @@
                       <geom mesh="coupler" name="hande_coupler" type="mesh" class="visual" rgba="0.1 0.1 0.1 1" />
                       <geom mesh="hande" name="hande_base" type="mesh" class="visual" rgba="0.1 0.1 0.1 1" />
                       <site name="tcp" pos="0 0 0.135"/>
-                      <geom name="robot_0" class="collision" pos="0 0 0.04" quat="1 0 0 1" size="0.04 0.07"/>
+                      <geom name="robot_0" class="collision" pos="0 0 0.04" quat="1 0 0 1" size="0.04 0.03"/>
 
                       <body name="hande_left_finger" pos="0 0 0.099" gravcomp="1">
                         <inertial pos="0.02262 -0.00759 0.00738" quat="0.871952 0.0369732 -0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
                         <!-- <joint name="hande_left_finger_joint" class="hande_left_finger" pos="0 0 0" axis="1 0 0"/> -->
                         <geom mesh="left_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1" />
+                        <geom name="robot_01" class="collision" pos="0.03 0 0" quat="1 0 0 1" size="0.01 0.04"/>
                       </body>
 
                       <body name="hande_right_finger" pos="0 0 0.099" gravcomp="1">
                         <inertial pos="-0.02262 0.00759 0.00738" quat="0.871952 -0.0369732 0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
                         <!-- <joint name="hande_right_finger_joint" class="hande_right_finger" pos="0 0 0" axis="-1 0 0"/> -->
                         <geom mesh="right_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1"/>
+                        <geom name="robot_02" class="collision" pos="-0.03 0 0" quat="1 0 0 1" size="0.01 0.04"/>
                       </body>
 
                     </body>
@@ -276,7 +278,7 @@
                       <geom class="visual" mesh="base_mount" material="black"/>
                       <site name="tcp_2" pos="0 0 0.135"/>
                       <!-- <geom class="collision" mesh="base_mount"/> -->
-                      <geom name="robot_10" class="collision" pos="0 0 0.04" quat="1 0 0 1" size="0.04 0.07"/>
+                      <geom name="robot_10" class="collision" pos="0 0 0.04" quat="1 0 0 1" size="0.04 0.02"/>
                       <body name="base" pos="0 0 0.0038" quat="1 0 0 -1" gravcomp="1">
                         <inertial mass="0.777441" pos="0 -2.70394e-05 0.0354675" quat="1 -0.00152849 0 0"
                           diaginertia="0.000260285 0.000225381 0.000152708"/>
@@ -289,6 +291,7 @@
                             diaginertia="1.72352e-06 1.60906e-06 3.22006e-07"/>
                           <!-- <joint name="right_driver_joint" class="driver"/> -->
                           <geom class="visual" mesh="driver" material="gray"/>
+                          <geom name="robot_101" class="collision" pos="0 0.02 0.03" quat="1 0 0 1" size="0.025 0.02"/>
                           <!-- <geom class="collision" mesh="driver"/> -->
                           <body name="right_coupler" pos="0 0.0315 -0.0041" gravcomp="1">
                             <inertial mass="0.0140974" pos="0 0.00301209 0.0232175" quat="0.705636 -0.0455904 0.0455904 0.705636"
@@ -328,6 +331,7 @@
                             diaginertia="1.72352e-06 1.60906e-06 3.22006e-07"/>
                           <!-- <joint name="left_driver_joint" class="driver"/> -->
                           <geom class="visual" mesh="driver" material="gray"/>
+                          <geom name="robot_102" class="collision" pos="0 0.02 0.03" quat="1 0 0 1" size="0.025 0.02"/>
                           <!-- <geom class="collision" mesh="driver"/> -->
                           <body name="left_coupler" pos="0 0.0315 -0.0041" gravcomp="1">
                             <inertial mass="0.0140974" pos="0 0.00301209 0.0232175" quat="0.705636 -0.0455904 0.0455904 0.705636"
