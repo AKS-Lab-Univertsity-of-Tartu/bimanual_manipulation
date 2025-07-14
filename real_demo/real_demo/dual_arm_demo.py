@@ -20,9 +20,6 @@ from sampling_based_planner.quat_math import quaternion_distance
 from rtde_control import RTDEControlInterface as RTDEControl
 from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
-from gripper_srv.srv import GripperService
-
-
 PACKAGE_DIR = get_package_share_directory('real_demo')
 
 class Planner(Node):
@@ -90,24 +87,27 @@ class Planner(Node):
         self.rtde_c_2 = None
         self.rtde_r_2 = None
 
+        self.grippers = {
+                            '1': {
+                                'srv': None,
+                                'state': 'open'
+                            },
+                            '2': {
+                                'srv': None,
+                                'state': 'open'
+                            }
+                        }
+
+
         if self.use_hardware:
             try:
+                from gripper_srv.srv import GripperService
+
                 self.rtde_c_1 = RTDEControl("192.168.0.120")
                 self.rtde_r_1 = RTDEReceive("192.168.0.120")
 
                 self.rtde_c_2 = RTDEControl("192.168.0.124")
                 self.rtde_r_2 = RTDEReceive("192.168.0.124")
-
-                self.grippers = {
-                    '1': {
-                        'srv': None,
-                        'state': 'open'
-                    },
-                    '2': {
-                        'srv': None,
-                        'state': 'open'
-                    }
-                }
 
                 self.grippers['1']['srv'] = self.create_client(GripperService, 'gripper_1/gripper_service')
                 while not self.grippers['1']['srv'].wait_for_service(timeout_sec=1.0):
@@ -132,8 +132,20 @@ class Planner(Node):
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.model.opt.timestep = timestep
 
+        joint_names = np.array([mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i)
+                    for i in range(self.model.njnt)])
+        
+        robot_joints = np.array(['shoulder_pan_joint_1', 'shoulder_lift_joint_1', 'elbow_joint_1', 'wrist_1_joint_1', 'wrist_2_joint_1', 'wrist_3_joint_1',
+                        'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
+        
+        self.joint_mask = np.isin(joint_names, robot_joints)
+
         self.data = mujoco.MjData(self.model)
-        self.data.qpos[:self.num_dof] = self.init_joint_position
+        self.data.qpos[self.joint_mask] = self.init_joint_position
+        print("Init qpos:", self.data.qpos)
+        print("Init qvel:", self.data.qvel)
+
+        # self.data.ctrl[:] = [0, 0] # Setting grippers to open position
 
         # Set the table positions alligmed with the motion capture coordinate system
         if self.use_hardware:
@@ -239,6 +251,8 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
+        # self.data.ctrl[:] = [0, 0]
+
         if self.use_hardware:
             # Get current state
             current_pos_1 = np.array(self.rtde_r_1.getActualQ())
@@ -250,8 +264,8 @@ class Planner(Node):
             current_pos = np.concatenate((current_pos_1, current_pos_2), axis=None)
             current_vel = np.concatenate((current_vel_1, current_vel_2), axis=None)
         else:
-            current_pos = self.data.qpos[:self.planner.num_dof]
-            current_vel = self.data.qvel[:self.planner.num_dof]
+            current_pos = self.data.qpos[self.joint_mask]
+            current_vel = self.data.qvel[self.joint_mask]
         
         
         
@@ -265,10 +279,12 @@ class Planner(Node):
 
             # Update MuJoCo state
             current_pos = np.concatenate((np.array(self.rtde_r_1.getActualQ()), np.array(self.rtde_r_2.getActualQ())), axis=None)
-            self.data.qpos[:self.planner.num_dof] = current_pos
+            self.data.qpos[self.joint_mask] = current_pos
             mujoco.mj_forward(self.model, self.data)
         else:
-            self.data.qvel[:self.planner.num_dof] = thetadot
+            self.data.qvel[:] = np.zeros(self.model.njnt)
+            self.data.qvel[self.joint_mask] = thetadot
+            print(self.data.qvel)
             mujoco.mj_step(self.model, self.data)
 
         current_cost_g_1 = np.linalg.norm(
@@ -282,15 +298,19 @@ class Planner(Node):
             self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
         
         if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
-            if self.grippers['2']['status']=='open':
-                self.gripper_control(gripper_idx=2, action='close') 
+            if self.grippers['2']['state']=='open':
+                if self.use_hardware:
+                    self.gripper_control(gripper_idx=2, action='close') 
+                self.data.ctrl[1] = 255
         
         if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
-            if self.grippers['1']['status']=='open':
-                self.gripper_control(gripper_idx=1, action='close')
+            if self.grippers['1']['state']=='open':
+                if self.use_hardware:
+                    self.gripper_control(gripper_idx=1, action='close')
+                self.data.ctrl[0] = 255
 
         if self.record_data_:
-            theta = self.data.qpos[:self.planner.num_dof]
+            theta = self.data.qpos[self.joint_mask]
             self.record_data(theta=theta, thetadot=thetadot, theta_horizon=theta_horizon, thetadot_horizon=thetadot_horizon)
         
         # Update viewer
@@ -312,7 +332,7 @@ class Planner(Node):
         self.req.speed = 255
         self.req.force = 255
         resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
-        self.grippers[str(gripper_idx)]['status'] = action
+        self.grippers[str(gripper_idx)]['state'] = action
 
         print(f"Gripper {gripper_idx} has complited {action} action.")
     

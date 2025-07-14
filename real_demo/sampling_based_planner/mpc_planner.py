@@ -164,9 +164,9 @@ class run_cem_planner:
     def compute_control(self, current_pos, current_vel):
         """Compute optimal control using CEM/MPC for dual-arm system"""
         # Update MuJoCo state
-        self.data.qpos[:self.num_dof] = current_pos
-        self.data.qvel[:self.num_dof] = current_vel
-        mujoco.mj_forward(self.model, self.data)
+        # self.data.qpos[self.cem.joint_mask] = current_pos
+        # self.data.qvel[self.cem.joint_mask] = current_vel
+        # mujoco.mj_forward(self.model, self.data)
         
         # Handle covariance matrix numerical stability
         if np.isnan(self.xi_cov).any():
@@ -194,27 +194,28 @@ class run_cem_planner:
             s_init_nn_output = []
             
             for i in range(self.cem.num_dof):
-                theta_init = np.tile(self.data.qpos[i], (self.num_batch, 1))
-                v_start = np.tile(self.data.qvel[i], (self.num_batch, 1))
-                xi_samples_single = xi_samples_reshaped[:, i, :]
-                inp = np.hstack([xi_samples_single, theta_init, v_start])
-                inp_torch = torch.tensor(inp).float().to(self.device)
-                inp_norm_torch = self._robust_scale(inp_torch)
-                neural_output_batch = self.mlp_model.mlp(inp_norm_torch)
-                
-                xi_projected_nn_output_single = neural_output_batch[:, :self.cem.nvar_single]
-                lamda_init_nn_output_single = neural_output_batch[:, self.cem.nvar_single: 2*self.cem.nvar_single]
-                s_init_nn_output_single = neural_output_batch[:, 2*self.cem.nvar_single: 2*self.cem.nvar_single + self.cem.num_total_constraints_per_dof]
-                s_init_nn_output_single = torch.maximum(
-                    torch.zeros((self.num_batch, self.cem.num_total_constraints_per_dof), device=self.device), 
-                    s_init_nn_output_single)
-                
-                xi_projected_nn_output = self._append_torch_tensors(
-                    xi_projected_nn_output_single, xi_projected_nn_output)
-                lamda_init_nn_output = self._append_torch_tensors(
-                    lamda_init_nn_output_single, lamda_init_nn_output)
-                s_init_nn_output = self._append_torch_tensors(
-                    s_init_nn_output_single, s_init_nn_output)
+                if self.cem.joint_mask[i]:
+                    theta_init = np.tile(self.data.qpos[i], (self.num_batch, 1))
+                    v_start = np.tile(self.data.qvel[i], (self.num_batch, 1))
+                    xi_samples_single = xi_samples_reshaped[:, i, :]
+                    inp = np.hstack([xi_samples_single, theta_init, v_start])
+                    inp_torch = torch.tensor(inp).float().to(self.device)
+                    inp_norm_torch = self._robust_scale(inp_torch)
+                    neural_output_batch = self.mlp_model.mlp(inp_norm_torch)
+                    
+                    xi_projected_nn_output_single = neural_output_batch[:, :self.cem.nvar_single]
+                    lamda_init_nn_output_single = neural_output_batch[:, self.cem.nvar_single: 2*self.cem.nvar_single]
+                    s_init_nn_output_single = neural_output_batch[:, 2*self.cem.nvar_single: 2*self.cem.nvar_single + self.cem.num_total_constraints_per_dof]
+                    s_init_nn_output_single = torch.maximum(
+                        torch.zeros((self.num_batch, self.cem.num_total_constraints_per_dof), device=self.device), 
+                        s_init_nn_output_single)
+                    
+                    xi_projected_nn_output = self._append_torch_tensors(
+                        xi_projected_nn_output_single, xi_projected_nn_output)
+                    lamda_init_nn_output = self._append_torch_tensors(
+                        lamda_init_nn_output_single, lamda_init_nn_output)
+                    s_init_nn_output = self._append_torch_tensors(
+                        s_init_nn_output_single, s_init_nn_output)
             
             self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
@@ -250,22 +251,25 @@ class run_cem_planner:
             self.data.site_xpos[self.tcp_id_2] - self.target_pos_2)
         current_cost_r_2 = quaternion_distance(
             self.data.xquat[self.hande_id_2], self.target_rot_2)
+        
+        joint_states = np.zeros(self.cem.joint_mask.shape)
+        joint_states[self.cem.joint_mask] = current_pos
 
         # Arm 1 control
         if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
             ik_solver_1 = InverseKinematicsSolver(
-                self.model, current_pos, "tcp")
+                self.model, joint_states, "tcp")
             ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[:self.num_dof//2]
+            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask][:self.num_dof//2]
         else:
             thetadot_1 = thetadot_cem[:6]
         
         # Arm 2 control
         if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
             ik_solver_2 = InverseKinematicsSolver(
-                self.model, current_pos, "tcp_2")
+                self.model, joint_states, "tcp_2")
             ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
-            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[:self.num_dof//2]
+            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask][:self.num_dof//2]
         else:
             thetadot_2 = thetadot_cem[6:]
 
