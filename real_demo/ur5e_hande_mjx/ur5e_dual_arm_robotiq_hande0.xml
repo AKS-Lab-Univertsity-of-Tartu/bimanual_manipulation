@@ -50,7 +50,7 @@
         <joint range="-0.872664 0.872664" armature="0.001" pos="0 -0.018 0.0065" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
       </default>
       <default class="spring_link">
-        <joint range="-0.29670597283 0.8" armature="0.001" stiffness="0.01" springref="2.62" damping="0.00125"/>
+        <joint range="-0.29670597283 0.8" armature="0.001" stiffness="0.005" springref="2.12" damping="0.00125"/>
         <!-- <joint range="-0.29670597283 0.8" armature="0.001" stiffness="0" damping="0"/> -->
       </default>
       <default class="coupler_2">
@@ -414,10 +414,10 @@
     <general class="size1" name="wrist_2_1" joint="wrist_2_joint_1" group='0'/>
     <general class="size1" name="wrist_3_1" joint="wrist_3_joint_1" group='0'/> -->
     <general name="hande_fingers_actuator" class="hande" tendon="split_1" ctrlrange="0 255"
-      forcerange="-100 100" gaintype="affine" biastype="affine" gainprm="0.00098 0 0"
-      biasprm="0 -10 -0.5"/>
+      forcerange="-100 100" gaintype="affine" biastype="affine" gainprm="0.000298 0 0"
+      biasprm="0 -3 -0.9"/>
 
     <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-5 5" ctrlrange="0 255"
-      gainprm="0.005137255 0 0" biasprm="0 -2 -0.001"/>
+      gainprm="0.0023137255 0 0" biasprm="0 -0.5 -0.001"/>
   </actuator> 
 </mujoco>
