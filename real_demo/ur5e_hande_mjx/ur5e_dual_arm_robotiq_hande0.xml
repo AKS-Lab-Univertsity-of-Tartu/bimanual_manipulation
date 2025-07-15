@@ -24,7 +24,7 @@
       </default>
 
       <default class="collision">
-        <geom type="capsule" contype="1" conaffinity="1" group="2"/>
+        <geom type="capsule" contype="1" conaffinity="1" group="3"/>
       </default>
 
     </default>

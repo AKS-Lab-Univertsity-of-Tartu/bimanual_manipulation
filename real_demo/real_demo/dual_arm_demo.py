@@ -77,8 +77,8 @@ class Planner(Node):
             self.data_files['setup'].writeheader()
             self.data_files['trajectory'].writeheader()
 
-        self.grab_pos_thresh = 0.06
-        self.grab_rot_thresh = 0.1
+        self.grab_pos_thresh = 0.011
+        self.grab_rot_thresh = 0.11
 
         # Initialize robot connection
         self.rtde_c_1 = None
@@ -191,7 +191,7 @@ class Planner(Node):
         
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-        self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+        # self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         if self.use_hardware:
             self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]     
         else:
@@ -305,17 +305,17 @@ class Planner(Node):
         current_cost_r_2 = quaternion_distance(
             self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
         
-        # if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
-        #     if self.grippers['2']['state']=='open':
-        #         if self.use_hardware:
-        #             self.gripper_control(gripper_idx=2, action='close') 
-        #         self.data.ctrl[1] = 255
+        if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
+            if self.grippers['2']['state']=='open':
+                if self.use_hardware:
+                    self.gripper_control(gripper_idx=2, action='close') 
+                self.data.ctrl[1] = 255
         
-        # if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
-        #     if self.grippers['1']['state']=='open':
-        #         if self.use_hardware:
-        #             self.gripper_control(gripper_idx=1, action='close')
-        #         self.data.ctrl[0] = 255
+        if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
+            if self.grippers['1']['state']=='open':
+                if self.use_hardware:
+                    self.gripper_control(gripper_idx=1, action='close')
+                self.data.ctrl[0] = 255
 
         if self.record_data_:
             theta = self.data.qpos[self.joint_mask_pos]

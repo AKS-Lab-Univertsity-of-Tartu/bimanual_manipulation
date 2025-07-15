@@ -1,5 +1,5 @@
 from sampling_based_planner.mjx_planner import cem_planner
-from sampling_based_planner.quat_math import quaternion_distance
+from sampling_based_planner.quat_math import quaternion_distance, quaternion_multiply, rotation_quaternion
 from sampling_based_planner.Simple_MLP.mlp_singledof import MLP, MLPProjectionFilter
 from ik_based_planner.ik_solver import InverseKinematicsSolver
 
@@ -84,12 +84,12 @@ class run_cem_planner:
         target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
         target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
 
-        self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3]
-        # self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
-        self.target_rot_1 = np.array([0.7071, 0.7071, 0, 0])
-        self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3]
-        # self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] #[0.7071, 0.7071, 0, 0]
-        self.target_rot_2 = np.array([0.7071, 0.7071, 0, 0])
+        self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.04])
+        self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
+        self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-90, [0, 1, 0]))
+        self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.04])
+        self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] 
+        self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
         
         # Get obstacle reference
         self.obstacle_pos = data.mocap_pos[

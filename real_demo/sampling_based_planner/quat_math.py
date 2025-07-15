@@ -10,15 +10,31 @@ def rotation_quaternion(angle_deg, axis):
     angle_rad = np.deg2rad(angle_deg)
     w = np.cos(angle_rad / 2)
     x, y, z = axis * np.sin(angle_rad / 2)
-    return (round(w, 5), round(x, 5), round(y, 5), round(z, 5))
+    return np.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
 
 def quaternion_multiply(q1, q2):
-		w1, x1, y1, z1 = q1
-		w2, x2, y2, z2 = q2
-		
-		w = w2 * w1 - x2 * x1 - y2 * y1 - z2 * z1
-		x = w2 * x1 + x2 * w1 + y2 * z1 - z2 * y1
-		y = w2 * y1 - x2 * z1 + y2 * w1 + z2 * x1
-		z = w2 * z1 + x2 * y1 - y2 * x1 + z2 * w1
-		
-		return (round(w, 5), round(x, 5), round(y, 5), round(z, 5))
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    
+    w = w2 * w1 - x2 * x1 - y2 * y1 - z2 * z1
+    x = w2 * x1 + x2 * w1 + y2 * z1 - z2 * y1
+    y = w2 * y1 - x2 * z1 + y2 * w1 + z2 * x1
+    z = w2 * z1 + x2 * y1 - y2 * x1 + z2 * w1
+    
+    return np.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
+
+def main():
+    # quat = np.array([0.70711, 0, -0.70711, 0])
+    quat0 = np.array([0, 0, 0, 1])#rotation_quaternion(90, [0, 0, 1])
+    print(quat0)
+    quat1 = rotation_quaternion(90, [0, 0, 1])#quaternion_multiply(rotation_quaternion(90, [1, 0, 0]), rotation_quaternion(90, [0, 1, 0]))
+    quat0 = quaternion_multiply(quat0, quat1)
+    print(quat0)
+    quat2 = rotation_quaternion(90, [0, 1, 0])
+    quat0 = quaternion_multiply(quat0, quat2)
+    
+    # quat3 = quaternion_multiply(quat0, quat1)
+    print(quat0)
+
+if __name__=="__main__":
+    main()
