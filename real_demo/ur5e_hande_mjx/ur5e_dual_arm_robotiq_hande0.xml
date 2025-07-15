@@ -190,14 +190,16 @@
                         <inertial pos="0.02262 -0.00759 0.00738" quat="0.871952 0.0369732 -0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
                         <joint name="hande_left_finger_joint" class="hande_left_finger" pos="0 0 0" axis="1 0 0"/>
                         <geom mesh="left_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1" />
-                        <geom name="robot_01" class="collision" pos="-0.03 0 0" quat="1 0 0 1" size="0.01 0.04"/>
+                        <geom name="robot_01" class="collision" pos="-0.03 0 0" quat="1 0 0 1" size="0.01 0.04" friction="0.7"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1"/>
                       </body>
 
                       <body name="hande_right_finger" pos="0 0 0.099" gravcomp="1">
                         <inertial pos="-0.02262 0.00759 0.00738" quat="0.871952 -0.0369732 0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
                         <joint name="hande_right_finger_joint" class="hande_right_finger" pos="0 0 0" axis="-1 0 0"/>
                         <geom mesh="right_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1"/>
-                        <geom name="robot_02" class="collision" pos="0.03 0 0" quat="1 0 0 1" size="0.01 0.04"/>
+                        <geom name="robot_02" class="collision" pos="0.03 0 0" quat="1 0 0 1" size="0.01 0.04" friction="0.7"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1"/>
                       </body>
 
                     </body>
@@ -287,7 +289,7 @@
                             diaginertia="1.72352e-06 1.60906e-06 3.22006e-07"/>
                           <joint name="right_driver_joint" class="driver"/>
                           <geom class="visual" mesh="driver" material="gray"/>
-                          <geom name="robot_101" class="collision" pos="0 0.02 0.03" quat="1 0 0 1" size="0.022 0.02"/>
+                          <geom name="robot_101" class="collision" pos="0 0.03 0.02" quat="1 0 0 1" size="0.022 0.01"/>
                           <!-- <geom class="collision" mesh="driver"/> -->
                           <body name="right_coupler" pos="0 0.0315 -0.0041" gravcomp="1">
                             <inertial mass="0.0140974" pos="0 0.00301209 0.0232175" quat="0.705636 -0.0455904 0.0455904 0.705636"
@@ -312,6 +314,8 @@
                             <body name="right_pad" pos="0 -0.0189 0.01352" gravcomp="1">
                               <!-- <geom class="pad_box1" name="right_pad1"/>
                               <geom class="pad_box2" name="right_pad2"/> -->
+                              <geom name="robot_103" class="collision" pos="0 0 0.02" quat="1 0 0 1" size="0.01 0.01" friction="0.7"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1"/>
                               <inertial mass="0.0035" pos="0 -0.0025 0.0185" quat="0.707107 0 0 0.707107"
                                 diaginertia="4.73958e-07 3.64583e-07 1.23958e-07"/>
                               <geom class="visual" mesh="pad"/>
@@ -327,7 +331,7 @@
                             diaginertia="1.72352e-06 1.60906e-06 3.22006e-07"/>
                           <joint name="left_driver_joint" class="driver"/>
                           <geom class="visual" mesh="driver" material="gray"/>
-                          <geom name="robot_102" class="collision" pos="0 0.02 0.03" quat="1 0 0 1" size="0.022 0.02"/>
+                          <geom name="robot_102" class="collision" pos="0 0.03 0.02" quat="1 0 0 1" size="0.022 0.01"/>
                           <!-- <geom class="collision" mesh="driver"/> -->
                           <body name="left_coupler" pos="0 0.0315 -0.0041" gravcomp="1">
                             <inertial mass="0.0140974" pos="0 0.00301209 0.0232175" quat="0.705636 -0.0455904 0.0455904 0.705636"
@@ -350,6 +354,8 @@
                             <geom class="visual" mesh="follower" material="black"/>
                             <!-- <geom class="collision" mesh="follower"/> -->
                             <body name="left_pad" pos="0 -0.0189 0.01352" gravcomp="1">
+                            <geom name="robot_104" class="collision" pos="0 0 0.02" quat="1 0 0 1" size="0.01 0.01" friction="0.7"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1"/>
                               <!-- <geom class="pad_box1" name="left_pad1"/>
                               <geom class="pad_box2" name="left_pad2"/> -->
                               <inertial mass="0.0035" pos="0 -0.0025 0.0185" quat="1 0 0 1"
@@ -421,7 +427,7 @@
       forcerange="-100 100" gaintype="affine" biastype="affine" gainprm="0.000298 0 0"
       biasprm="0 -3 -0.9"/>
 
-    <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-5 5" ctrlrange="0 255"
+    <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-100 100" ctrlrange="0 255"
       gainprm="0.0023137255 0 0" biasprm="0 -0.5 -0.001"/>
   </actuator> 
 </mujoco>

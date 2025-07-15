@@ -84,10 +84,10 @@ class run_cem_planner:
         target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
         target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
 
-        self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.04])
+        self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.03])
         self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
         self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-90, [0, 1, 0]))
-        self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.04])
+        self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.03])
         self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] 
         self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
         

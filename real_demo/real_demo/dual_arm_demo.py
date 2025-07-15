@@ -63,6 +63,8 @@ class Planner(Node):
         position_threshold = self.get_parameter('position_threshold').get_parameter_value().double_value
         rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
 
+        self.task = 'pick'
+
         # Open files to which the data will be saved
         if self.record_data_:
             self.pathes = {
@@ -77,7 +79,7 @@ class Planner(Node):
             self.data_files['setup'].writeheader()
             self.data_files['trajectory'].writeheader()
 
-        self.grab_pos_thresh = 0.011
+        self.grab_pos_thresh = 0.021
         self.grab_rot_thresh = 0.11
 
         # Initialize robot connection
@@ -277,7 +279,6 @@ class Planner(Node):
             current_vel = self.data.qvel[self.joint_mask_vel]
         
         
-        
         # Compute control
         thetadot, cost, cost_g, cost_r, cost_c, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel)
         
@@ -307,15 +308,11 @@ class Planner(Node):
         
         if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
             if self.grippers['2']['state']=='open':
-                if self.use_hardware:
-                    self.gripper_control(gripper_idx=2, action='close') 
-                self.data.ctrl[1] = 255
+                self.gripper_control(gripper_idx=2, action='close') 
         
         if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
             if self.grippers['1']['state']=='open':
-                if self.use_hardware:
-                    self.gripper_control(gripper_idx=1, action='close')
-                self.data.ctrl[0] = 255
+                self.gripper_control(gripper_idx=1, action='close')
 
         if self.record_data_:
             theta = self.data.qpos[self.joint_mask_pos]
@@ -333,14 +330,26 @@ class Planner(Node):
               f'Cost: {np.round(cost, 2)}', flush=True)
         
     def gripper_control(self, gripper_idx=1, action='open'):
-        if action == 'open':
-            self.req.position = 0
-        elif action == 'close':
-            self.req.position = 100
-        self.req.speed = 255
-        self.req.force = 255
-        resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
+        self.data.ctrl[gripper_idx-1] = 255
+        if self.use_hardware:
+            if action == 'open':
+                self.req.position = 0
+            elif action == 'close':
+                self.req.position = 100
+            self.req.speed = 255
+            self.req.force = 255
+            resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
         self.grippers[str(gripper_idx)]['state'] = action
+
+        if self.grippers['1']['state'] == 'close' and self.grippers['2']['state'] == 'close':
+            target_1_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
+            target_2_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
+            target_1_pos = self.data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.04])
+            target_1_rot = self.planner.target_rot_1
+            target_2_pos = self.data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.04])
+            target_2_rot = self.planner.target_rot_2
+            self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
+            self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
 
         print(f"Gripper {gripper_idx} has complited {action} action.")
     
