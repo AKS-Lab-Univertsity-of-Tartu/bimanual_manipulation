@@ -81,15 +81,22 @@ class run_cem_planner:
         # self.target_pos_2 = model.body(name="target_1").pos
         # self.target_rot_2 = model.body(name="target_1").quat
 
-        target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
-        target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
-
-        self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.03])
-        self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
+        self.target_pos_1 = model.body(name="target_0").pos
+        self.target_rot_1 = model.body(name="target_0").quat
         self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-90, [0, 1, 0]))
-        self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.03])
-        self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] 
+        self.target_pos_2 = model.body(name="target_1").pos
+        self.target_rot_2 = model.body(name="target_1").quat
         self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
+
+        # target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
+        # target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
+
+        # self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.03])
+        # self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
+        # self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-90, [0, 1, 0]))
+        # self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.03])
+        # self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] 
+        # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
         
         # Get obstacle reference
         self.obstacle_pos = data.mocap_pos[
@@ -230,6 +237,9 @@ class run_cem_planner:
             self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
+        object_1_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]]
+        object_2_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]]
+
         # CEM computation
         cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
@@ -245,7 +255,9 @@ class run_cem_planner:
             self.target_rot_2,
             self.lamda_init,
             self.s_init,
-            self.xi_samples
+            self.xi_samples,
+            object_1_pos,
+            object_2_pos
         )
 
         # Get mean velocity command (average middle 80% of trajectory)

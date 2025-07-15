@@ -178,7 +178,10 @@ class cem_planner():
 		self.hande_id_2 = self.model.body(name="hande_2").id
 		self.tcp_id_2 = self.model.site(name="tcp_2").id
 
-		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None))
+		self.object_0_qpos_idx = self.model.body_mocapid[self.model.body(name='object_0').id]
+		self.object_1_qpos_idx = self.model.body_mocapid[self.model.body(name='object_1').id]
+
+		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0))
 		self.compute_boundary_vec_batch_single_dof = (jax.vmap(self.compute_boundary_vec_single_dof, in_axes = (0)  )) # vmap parrallelization takes place over first axis
 		self.compute_projection_batched_over_dof = jax.vmap(self.compute_projection_single_dof, in_axes=(0, 0, 0, 0, 0)) # vmap parrallelization takes place over first axis
@@ -399,12 +402,14 @@ class cem_planner():
 
 
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_rollout_single(self, thetadot, init_pos, init_vel):
+	def compute_rollout_single(self, thetadot, init_pos, init_vel, object_0_pos, object_1_pos):
 
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
+		mocap_pos = mjx_data.mocap_pos.at[self.object_0_qpos_idx].set(object_0_pos)
+		mocap_pos = mjx_data.mocap_pos.at[self.object_1_qpos_idx].set(object_0_pos)
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos)
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
 		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = out
@@ -479,7 +484,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def cem_iter(self, carry,  scan_over):
 
-		init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples = carry
+		init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, object_0_pos, object_1_pos = carry
 
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
@@ -518,14 +523,14 @@ class cem_planner():
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
 
 
-		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel)
+		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, object_0_pos, object_1_pos)
 		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
 
-		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new)
+		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, object_0_pos, object_1_pos)
 
 		return carry, (cost_batch, cost_g_batch, cost_r_batch, cost_c_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
@@ -543,7 +548,9 @@ class cem_planner():
 		target_rot_2,
 		lamda_init,
 		s_init,
-		xi_samples
+		xi_samples,
+		object_0_pos,
+        object_1_pos
 		):
 
 
@@ -555,11 +562,14 @@ class cem_planner():
 		target_pos_2 = jnp.tile(target_pos_2, (self.num_batch, 1))
 		target_rot_2 = jnp.tile(target_rot_2, (self.num_batch, 1))
 
+		# object_0_pos = jnp.tile(object_0_pos, (self.num_batch, 1))
+		# object_1_pos = jnp.tile(object_1_pos, (self.num_batch, 1))
+
 		state_term = thetadot_init	
 		
 		key, subkey = jax.random.split(self.key)
 
-		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples)
+		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, object_0_pos, object_1_pos)
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)

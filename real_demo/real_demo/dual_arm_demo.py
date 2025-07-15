@@ -193,7 +193,7 @@ class Planner(Node):
         
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-        # self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+        self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         if self.use_hardware:
             self.viewer.cam.lookat[:] = [-3.5, 0.0, 0.8]     
         else:
@@ -262,7 +262,10 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
-        # self.data.ctrl[:] = [0, 0]
+        if self.task == 'move':
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = self.data.site_xpos[self.planner.tcp_id_1]
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]] = self.data.site_xpos[self.planner.tcp_id_2]
+
 
         if self.use_hardware:
             # Get current state
@@ -307,12 +310,16 @@ class Planner(Node):
             self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
         
         if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
-            if self.grippers['2']['state']=='open':
+            if self.task == 'pick' and self.grippers['2']['state']=='open':
                 self.gripper_control(gripper_idx=2, action='close') 
+            elif self.task == 'move' and self.grippers['2']['state']=='close':
+                self.gripper_control(gripper_idx=2, action='open') 
         
         if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
-            if self.grippers['1']['state']=='open':
+            if self.task == 'pick' and self.grippers['1']['state']=='open':
                 self.gripper_control(gripper_idx=1, action='close')
+            elif self.task == 'move' and self.grippers['1']['state']=='close':
+                self.gripper_control(gripper_idx=1, action='open') 
 
         if self.record_data_:
             theta = self.data.qpos[self.joint_mask_pos]
@@ -330,26 +337,35 @@ class Planner(Node):
               f'Cost: {np.round(cost, 2)}', flush=True)
         
     def gripper_control(self, gripper_idx=1, action='open'):
-        self.data.ctrl[gripper_idx-1] = 255
+
+        self.data.ctrl[gripper_idx-1] = 255 if action == 'close' else 0
+
         if self.use_hardware:
-            if action == 'open':
-                self.req.position = 0
-            elif action == 'close':
-                self.req.position = 100
+            self.req.position = 100 if action == 'close' else 0
             self.req.speed = 255
             self.req.force = 255
             resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
+
         self.grippers[str(gripper_idx)]['state'] = action
 
         if self.grippers['1']['state'] == 'close' and self.grippers['2']['state'] == 'close':
-            target_1_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
-            target_2_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
-            target_1_pos = self.data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.04])
-            target_1_rot = self.planner.target_rot_1
-            target_2_pos = self.data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.04])
-            target_2_rot = self.planner.target_rot_2
+            # target_1_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
+            # target_2_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
+            # target_1_pos = self.data.qpos[target_2_addr : target_2_addr + 3] 
+            # target_1_rot = self.planner.target_rot_1
+            # target_2_pos = self.data.qpos[target_1_addr : target_1_addr + 3] 
+            # target_2_rot = self.planner.target_rot_2
+            # self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
+            # self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
+
+            target_1_pos = self.model.body(name="target_1").pos.copy()
+            target_1_rot = self.planner.target_rot_1.copy()
+            target_2_pos = self.model.body(name="target_0").pos.copy()
+            target_2_rot = self.planner.target_rot_2.copy()
             self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
             self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
+
+            self.task = 'move'
 
         print(f"Gripper {gripper_idx} has complited {action} action.")
     
