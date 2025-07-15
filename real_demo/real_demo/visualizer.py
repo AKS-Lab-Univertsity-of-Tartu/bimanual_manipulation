@@ -61,15 +61,37 @@ class Visualizer(Node):
 
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.model.opt.timestep = 0.1
+
+        joint_names_pos = list()
+        joint_names_vel = list()
+        for i in range(self.model.njnt):
+            joint_type = self.model.jnt_type[i]
+            n_pos = 7 if joint_type == mujoco.mjtJoint.mjJNT_FREE else 4 if joint_type == mujoco.mjtJoint.mjJNT_BALL else 1
+            n_vel = 6 if joint_type == mujoco.mjtJoint.mjJNT_FREE else 3 if joint_type == mujoco.mjtJoint.mjJNT_BALL else 1
+            
+            for _ in range(n_pos):
+                joint_names_pos.append(mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i))
+            for _ in range(n_vel):
+                joint_names_vel.append(mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i))
+        
+        
+        robot_joints = np.array(['shoulder_pan_joint_1', 'shoulder_lift_joint_1', 'elbow_joint_1', 'wrist_1_joint_1', 'wrist_2_joint_1', 'wrist_3_joint_1',
+                        'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
+        
+        self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
+        self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
+
+
         self.data = mujoco.MjData(self.model)
-        self.data.qpos[:12] = self.init_joint_position
+
+        self.data.qpos[self.joint_mask_pos] = self.init_joint_position
 
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         if self.use_hardware:
             self.viewer.cam.lookat[:] = [-3.0, 0.0, 0.8]     
         else:
-            self.viewer.cam.lookat[:] = [-3.0, 0.0, 0.8] #[0.0, 0.0, 0.8]  
+            self.viewer.cam.lookat[:] = [-0.0, 0.0, 0.8] #[0.0, 0.0, 0.8]  
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
@@ -143,10 +165,10 @@ class Visualizer(Node):
             thetadot_2 = self.rtde_r_2.getActualQd()
             thetadot = np.concatenate((thetadot_1, thetadot_2), axis=None)
         else:
-            theta = self.data.qpos[:self.num_dof]
-            thetadot = self.data.qvel[:self.num_dof]
+            theta = self.data.qpos[self.joint_mask_pos]
+            thetadot = self.data.qvel[self.joint_mask_vel]
 
-        self.data.qpos[:self.num_dof] = theta
+        self.data.qpos[self.joint_mask_pos] = theta
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
@@ -185,8 +207,8 @@ class Visualizer(Node):
             self.step_idx += 1
         else:
             self.step_idx = 0
-            self.data.qpos[:self.num_dof] = self.init_joint_position
-            self.data.qvel[:self.num_dof] = np.zeros(self.init_joint_position.shape)
+            self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+            self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
             mujoco.mj_forward(self.model, self.data)
             self.viewer.sync()
 

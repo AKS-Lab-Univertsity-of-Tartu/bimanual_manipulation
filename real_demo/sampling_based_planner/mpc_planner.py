@@ -76,10 +76,20 @@ class run_cem_planner:
         self.key = jax.random.PRNGKey(0)
         
         # Get references for both arms
-        self.target_pos_1 = model.body(name="target_0").pos
-        self.target_rot_1 = model.body(name="target_0").quat
-        self.target_pos_2 = model.body(name="target_1").pos
-        self.target_rot_2 = model.body(name="target_1").quat
+        # self.target_pos_1 = model.body(name="target_0").pos
+        # self.target_rot_1 = model.body(name="target_0").quat
+        # self.target_pos_2 = model.body(name="target_1").pos
+        # self.target_rot_2 = model.body(name="target_1").quat
+
+        target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
+        target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
+
+        self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3]
+        # self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
+        self.target_rot_1 = np.array([0.7071, 0.7071, 0, 0])
+        self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3]
+        # self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] #[0.7071, 0.7071, 0, 0]
+        self.target_rot_2 = np.array([0.7071, 0.7071, 0, 0])
         
         # Get obstacle reference
         self.obstacle_pos = data.mocap_pos[
@@ -164,8 +174,8 @@ class run_cem_planner:
     def compute_control(self, current_pos, current_vel):
         """Compute optimal control using CEM/MPC for dual-arm system"""
         # Update MuJoCo state
-        # self.data.qpos[self.cem.joint_mask] = current_pos
-        # self.data.qvel[self.cem.joint_mask] = current_vel
+        # self.data.qpos[self.cem.joint_mask_pos] = current_pos
+        # self.data.qvel[self.cem.joint_mask_vel] = current_vel
         # mujoco.mj_forward(self.model, self.data)
         
         # Handle covariance matrix numerical stability
@@ -193,8 +203,8 @@ class run_cem_planner:
             lamda_init_nn_output = []
             s_init_nn_output = []
             
-            for i in range(self.cem.num_dof):
-                if self.cem.joint_mask[i]:
+            for i in range(self.cem.joint_mask_pos):
+                if self.cem.joint_mask_pos[i]:
                     theta_init = np.tile(self.data.qpos[i], (self.num_batch, 1))
                     v_start = np.tile(self.data.qvel[i], (self.num_batch, 1))
                     xi_samples_single = xi_samples_reshaped[:, i, :]
@@ -252,15 +262,15 @@ class run_cem_planner:
         current_cost_r_2 = quaternion_distance(
             self.data.xquat[self.hande_id_2], self.target_rot_2)
         
-        joint_states = np.zeros(self.cem.joint_mask.shape)
-        joint_states[self.cem.joint_mask] = current_pos
+        joint_states = np.zeros(self.cem.joint_mask_pos.shape)
+        joint_states[self.cem.joint_mask_pos] = current_pos
 
         # Arm 1 control
         if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
             ik_solver_1 = InverseKinematicsSolver(
                 self.model, joint_states, "tcp")
             ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask][:self.num_dof//2]
+            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
         else:
             thetadot_1 = thetadot_cem[:6]
         
@@ -269,7 +279,7 @@ class run_cem_planner:
             ik_solver_2 = InverseKinematicsSolver(
                 self.model, joint_states, "tcp_2")
             ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
-            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask][:self.num_dof//2]
+            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
         else:
             thetadot_2 = thetadot_cem[6:]
 

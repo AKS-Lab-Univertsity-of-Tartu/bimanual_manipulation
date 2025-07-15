@@ -132,18 +132,27 @@ class Planner(Node):
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.model.opt.timestep = timestep
 
-        joint_names = np.array([mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i)
-                    for i in range(self.model.njnt)])
+        joint_names_pos = list()
+        joint_names_vel = list()
+        for i in range(self.model.njnt):
+            joint_type = self.model.jnt_type[i]
+            n_pos = 7 if joint_type == mujoco.mjtJoint.mjJNT_FREE else 4 if joint_type == mujoco.mjtJoint.mjJNT_BALL else 1
+            n_vel = 6 if joint_type == mujoco.mjtJoint.mjJNT_FREE else 3 if joint_type == mujoco.mjtJoint.mjJNT_BALL else 1
+            
+            for _ in range(n_pos):
+                joint_names_pos.append(mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i))
+            for _ in range(n_vel):
+                joint_names_vel.append(mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i))
+        
         
         robot_joints = np.array(['shoulder_pan_joint_1', 'shoulder_lift_joint_1', 'elbow_joint_1', 'wrist_1_joint_1', 'wrist_2_joint_1', 'wrist_3_joint_1',
                         'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
         
-        self.joint_mask = np.isin(joint_names, robot_joints)
+        self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
+        self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
 
         self.data = mujoco.MjData(self.model)
-        self.data.qpos[self.joint_mask] = self.init_joint_position
-        print("Init qpos:", self.data.qpos)
-        print("Init qvel:", self.data.qvel)
+        self.data.qpos[self.joint_mask_pos] = self.init_joint_position
 
         # self.data.ctrl[:] = [0, 0] # Setting grippers to open position
 
@@ -264,8 +273,8 @@ class Planner(Node):
             current_pos = np.concatenate((current_pos_1, current_pos_2), axis=None)
             current_vel = np.concatenate((current_vel_1, current_vel_2), axis=None)
         else:
-            current_pos = self.data.qpos[self.joint_mask]
-            current_vel = self.data.qvel[self.joint_mask]
+            current_pos = self.data.qpos[self.joint_mask_pos]
+            current_vel = self.data.qvel[self.joint_mask_vel]
         
         
         
@@ -279,12 +288,11 @@ class Planner(Node):
 
             # Update MuJoCo state
             current_pos = np.concatenate((np.array(self.rtde_r_1.getActualQ()), np.array(self.rtde_r_2.getActualQ())), axis=None)
-            self.data.qpos[self.joint_mask] = current_pos
+            self.data.qpos[self.joint_mask_pos] = current_pos
             mujoco.mj_forward(self.model, self.data)
         else:
-            self.data.qvel[:] = np.zeros(self.model.njnt)
-            self.data.qvel[self.joint_mask] = thetadot
-            print(self.data.qvel)
+            self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+            self.data.qvel[self.joint_mask_vel] = thetadot
             mujoco.mj_step(self.model, self.data)
 
         current_cost_g_1 = np.linalg.norm(
@@ -297,20 +305,20 @@ class Planner(Node):
         current_cost_r_2 = quaternion_distance(
             self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
         
-        if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
-            if self.grippers['2']['state']=='open':
-                if self.use_hardware:
-                    self.gripper_control(gripper_idx=2, action='close') 
-                self.data.ctrl[1] = 255
+        # if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
+        #     if self.grippers['2']['state']=='open':
+        #         if self.use_hardware:
+        #             self.gripper_control(gripper_idx=2, action='close') 
+        #         self.data.ctrl[1] = 255
         
-        if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
-            if self.grippers['1']['state']=='open':
-                if self.use_hardware:
-                    self.gripper_control(gripper_idx=1, action='close')
-                self.data.ctrl[0] = 255
+        # if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
+        #     if self.grippers['1']['state']=='open':
+        #         if self.use_hardware:
+        #             self.gripper_control(gripper_idx=1, action='close')
+        #         self.data.ctrl[0] = 255
 
         if self.record_data_:
-            theta = self.data.qpos[self.joint_mask]
+            theta = self.data.qpos[self.joint_mask_pos]
             self.record_data(theta=theta, thetadot=thetadot, theta_horizon=theta_horizon, thetadot_horizon=thetadot_horizon)
         
         # Update viewer

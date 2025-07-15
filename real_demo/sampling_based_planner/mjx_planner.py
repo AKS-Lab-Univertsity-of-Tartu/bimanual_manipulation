@@ -137,13 +137,24 @@ class cem_planner():
 		self.mjx_data = jax.jit(mjx.forward)(self.mjx_model, self.mjx_data)
 		self.jit_step = jax.jit(mjx.step)
 
-		joint_names = np.array([mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i)
-                    for i in range(self.model.njnt)])
-		
+		joint_names_pos = list()
+		joint_names_vel = list()
+		for i in range(self.model.njnt):
+			joint_type = self.model.jnt_type[i]
+			n_pos = 7 if joint_type == mujoco.mjtJoint.mjJNT_FREE else 4 if joint_type == mujoco.mjtJoint.mjJNT_BALL else 1
+			n_vel = 6 if joint_type == mujoco.mjtJoint.mjJNT_FREE else 3 if joint_type == mujoco.mjtJoint.mjJNT_BALL else 1
+			
+			for _ in range(n_pos):
+				joint_names_pos.append(mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i))
+			for _ in range(n_vel):
+				joint_names_vel.append(mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i))
+
+
 		robot_joints = np.array(['shoulder_pan_joint_1', 'shoulder_lift_joint_1', 'elbow_joint_1', 'wrist_1_joint_1', 'wrist_2_joint_1', 'wrist_3_joint_1',
-                        'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
-		
-		self.joint_mask = np.isin(joint_names, robot_joints)
+						'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
+
+		self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
+		self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
 
 		self.geom_ids = []
 		
@@ -373,11 +384,11 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def mjx_step(self, mjx_data, thetadot_single):
 
-		qvel = mjx_data.qvel.at[self.joint_mask].set(thetadot_single)
+		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(thetadot_single)
 		mjx_data = mjx_data.replace(qvel=qvel)
 		mjx_data = self.jit_step(self.mjx_model, mjx_data)
 
-		theta = mjx_data.qpos[self.joint_mask]
+		theta = mjx_data.qpos[self.joint_mask_pos]
 		eef_rot = mjx_data.xquat[self.hande_id]	
 		eef_pos = mjx_data.site_xpos[self.tcp_id]
 		eef_rot_2 = mjx_data.xquat[self.hande_id_2]	
@@ -391,8 +402,8 @@ class cem_planner():
 	def compute_rollout_single(self, thetadot, init_pos, init_vel):
 
 		mjx_data = self.mjx_data
-		qvel = mjx_data.qvel.at[self.joint_mask].set(init_vel)
-		qpos = mjx_data.qpos.at[self.joint_mask].set(init_pos)
+		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
+		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
 		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
