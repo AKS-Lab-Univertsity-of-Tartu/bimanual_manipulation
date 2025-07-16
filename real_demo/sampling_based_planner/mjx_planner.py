@@ -153,8 +153,8 @@ class cem_planner():
 		robot_joints = np.array(['shoulder_pan_joint_1', 'shoulder_lift_joint_1', 'elbow_joint_1', 'wrist_1_joint_1', 'wrist_2_joint_1', 'wrist_3_joint_1',
 						'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
 
-		self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
-		self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
+		self.joint_mask_pos = np.isin(np.array(joint_names_pos), robot_joints)
+		self.joint_mask_vel = np.isin(np.array(joint_names_vel), robot_joints)
 
 		self.geom_ids = []
 		
@@ -171,6 +171,9 @@ class cem_planner():
 
 		self.geom_ids_all = np.array(self.geom_ids)
 		self.mask = jnp.any(jnp.isin(self.mjx_data.contact.geom, self.geom_ids_all), axis=1)
+
+		# print(self.mjx_data.contact.geom)
+		# print(self.mask)
 
 		self.hande_id = self.model.body(name="hande").id
 		self.tcp_id = self.model.site(name="tcp").id
@@ -408,7 +411,7 @@ class cem_planner():
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
 		mocap_pos = mjx_data.mocap_pos.at[self.object_0_qpos_idx].set(object_0_pos)
-		mocap_pos = mjx_data.mocap_pos.at[self.object_1_qpos_idx].set(object_0_pos)
+		mocap_pos = mjx_data.mocap_pos.at[self.object_1_qpos_idx].set(object_1_pos)
 		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos)
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
