@@ -421,11 +421,11 @@
     <general class="size1" name="wrist_1_1" joint="wrist_1_joint_1" group='0'/>
     <general class="size1" name="wrist_2_1" joint="wrist_2_joint_1" group='0'/>
     <general class="size1" name="wrist_3_1" joint="wrist_3_joint_1" group='0'/> -->
-    <!-- <general name="hande_fingers_actuator" class="hande" tendon="split_1" ctrlrange="0 255"
+    <general name="hande_fingers_actuator" class="hande" tendon="split_1" ctrlrange="0 255"
       forcerange="-100 100" gaintype="affine" biastype="affine" gainprm="0.000298 0 0"
       biasprm="0 -3 -0.9"/>
 
     <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-100 100" ctrlrange="0 255"
-      gainprm="0.0023137255 0 0" biasprm="0 -0.5 -0.001"/> -->
+      gainprm="0.0023137255 0 0" biasprm="0 -0.5 -0.001"/>
   </actuator> 
 </mujoco>
