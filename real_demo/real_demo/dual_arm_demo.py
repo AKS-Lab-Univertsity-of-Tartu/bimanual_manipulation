@@ -262,9 +262,9 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
-        if self.task == 'move':
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = np.array([-0.3, -0.2, 1])#self.data.site_xpos[self.planner.tcp_id_1]
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]] = np.array([-0.3, 0.2, 1])#self.data.site_xpos[self.planner.tcp_id_2]
+        # if self.task == 'move':
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = np.array([-0.3, -0.2, 1])#self.data.site_xpos[self.planner.tcp_id_1]
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]] = np.array([-0.3, 0.2, 1])#self.data.site_xpos[self.planner.tcp_id_2]
 
 
         if self.use_hardware:

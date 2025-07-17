@@ -24,7 +24,13 @@
       </default>
 
       <default class="collision">
-        <geom type="capsule" contype="1" conaffinity="1" group="3"/>
+        <geom type="capsule" contype="1" conaffinity="1" group="3" rgba="0.6 0.0 0.0 1"/>
+      </default>
+      <default class="collision_1">
+        <geom type="capsule" contype="0" conaffinity="1" group="3" rgba="0.0 0.6 0.0 1"/>
+      </default>
+      <default class="collision_2">
+        <geom type="capsule" contype="1" conaffinity="0" group="3" rgba="0.0 0.0 0.6 1"/>
       </default>
 
     </default>
@@ -56,6 +62,20 @@
       <default class="coupler_2">
         <joint range="-1.57 0" armature="0.001" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
       </default>
+
+      <!-- <joint axis="1 0 0"/>
+      <default class="driver">
+        <joint range="0 0.8" armature="0.005" damping="0.1" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
+      </default>
+      <default class="follower">
+        <joint range="-0.872664 0.872664" armature="0.001" pos="0 -0.018 0.0065" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
+      </default>
+      <default class="spring_link">
+        <joint range="-0.29670597283 0.8" armature="0.001" stiffness="0.005" springref="2.12" damping="0.00125"/>
+      </default>
+      <default class="coupler_2">
+        <joint range="-1.57 0" armature="0.001" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
+      </default> -->
 
       <!-- <default class="collision_2">
         <geom type="mesh" group="3"/>
@@ -133,7 +153,7 @@
           <geom mesh="shoulder_0" material="urblue" class="visual"/>
           <geom mesh="shoulder_1" material="black" class="visual"/>
           <geom mesh="shoulder_2" material="jointgray" class="visual"/>
-          <geom name="robot_1" class="collision" size="0.06 0.06" pos="0 0 -0.04"/>
+          <geom name="robot_1" class="collision_1" size="0.06 0.06" pos="0 0 -0.04"/>
           
           <body name="upper_arm_link_1" pos="0 0.138 0" quat="1 0 1 0" gravcomp="1">
             <inertial mass="8.393" pos="0 0 0.2125" diaginertia="0.133886 0.133886 0.0151074"/>
@@ -142,8 +162,8 @@
             <geom mesh="upperarm_1" material="black" class="visual"/>
             <geom mesh="upperarm_2" material="jointgray" class="visual"/>
             <geom mesh="upperarm_3" material="urblue" class="visual"/>
-            <geom name="robot_2" class="collision" pos="0 -0.04 0" quat="1 1 0 0" size="0.06 0.06"/>
-            <geom name="robot_3" class="collision" size="0.05 0.2" pos="0 0 0.2"/>
+            <geom name="robot_2" class="collision_1" pos="0 -0.04 0" quat="1 1 0 0" size="0.06 0.06"/>
+            <geom name="robot_3" class="collision_1" size="0.05 0.2" pos="0 0 0.2"/>
 
             <body name="forearm_link_1" pos="0 -0.131 0.425" gravcomp="1">
               <inertial mass="2.275" pos="0 0 0.196" diaginertia="0.0311796 0.0311796 0.004095"/>
@@ -152,7 +172,7 @@
               <geom mesh="forearm_1" material="linkgray" class="visual"/>
               <geom mesh="forearm_2" material="black" class="visual"/>
               <geom mesh="forearm_3" material="jointgray" class="visual"/>
-              <geom name="robot_4" class="collision" pos="0 0.08 0" quat="1 1 0 0" size="0.055 0.06"/>
+              <geom name="robot_4" class="collision_1" pos="0 0.08 0" quat="1 1 0 0" size="0.055 0.06"/>
               <geom name="robot_5" class="collision" size="0.038 0.19" pos="0 0 0.2"/>
 
               <body name="wrist_1_link_1" pos="0 0 0.392" quat="1 0 1 0" gravcomp="1">
@@ -190,16 +210,14 @@
                         <inertial pos="0.02262 -0.00759 0.00738" quat="0.871952 0.0369732 -0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
                         <joint name="hande_left_finger_joint" class="hande_left_finger" pos="0 0 0" axis="1 0 0"/>
                         <geom mesh="left_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1" />
-                        <geom name="robot_01" class="collision" pos="-0.03 0 0" quat="1 0 0 1" size="0.01 0.04" friction="0.7"
-            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1"/>
+                        <geom name="robot_01" class="collision" pos="-0.03 0 0" quat="1 0 0 1" size="0.01 0.04" />
                       </body>
 
                       <body name="hande_right_finger" pos="0 0 0.099" gravcomp="1">
                         <inertial pos="-0.02262 0.00759 0.00738" quat="0.871952 -0.0369732 0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
                         <joint name="hande_right_finger_joint" class="hande_right_finger" pos="0 0 0" axis="-1 0 0"/>
                         <geom mesh="right_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1"/>
-                        <geom name="robot_02" class="collision" pos="0.03 0 0" quat="1 0 0 1" size="0.01 0.04" friction="0.7"
-            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1"/>
+                        <geom name="robot_02" class="collision" pos="0.03 0 0" quat="1 0 0 1" size="0.01 0.04" />
                       </body>
 
                     </body>
@@ -225,7 +243,7 @@
           <geom mesh="shoulder_0" material="urblue" class="visual"/>
           <geom mesh="shoulder_1" material="black" class="visual"/>
           <geom mesh="shoulder_2" material="jointgray" class="visual"/>
-          <geom name="robot_11" class="collision" size="0.06 0.06" pos="0 0 -0.04"/>
+          <geom name="robot_11" class="collision_1" size="0.06 0.06" pos="0 0 -0.04"/>
           
           <body name="upper_arm_link_2" pos="0 0.138 0" quat="1 0 1 0" gravcomp="1">
             <inertial mass="8.393" pos="0 0 0.2125" diaginertia="0.133886 0.133886 0.0151074"/>
@@ -234,8 +252,8 @@
             <geom mesh="upperarm_1" material="black" class="visual"/>
             <geom mesh="upperarm_2" material="jointgray" class="visual"/>
             <geom mesh="upperarm_3" material="urblue" class="visual"/>
-            <geom name="robot_12" class="collision" pos="0 -0.04 0" quat="1 1 0 0" size="0.06 0.06"/>
-            <geom name="robot_13" class="collision" size="0.05 0.2" pos="0 0 0.2"/>
+            <geom name="robot_12" class="collision_1" pos="0 -0.04 0" quat="1 1 0 0" size="0.06 0.06"/>
+            <geom name="robot_13" class="collision_1" size="0.05 0.2" pos="0 0 0.2"/>
 
             <body name="forearm_link_2" pos="0 -0.131 0.425" gravcomp="1">
               <inertial mass="2.275" pos="0 0 0.196" diaginertia="0.0311796 0.0311796 0.004095"/>
@@ -244,7 +262,7 @@
               <geom mesh="forearm_1" material="linkgray" class="visual"/>
               <geom mesh="forearm_2" material="black" class="visual"/>
               <geom mesh="forearm_3" material="jointgray" class="visual"/>
-              <geom name="robot_14" class="collision" pos="0 0.08 0" quat="1 1 0 0" size="0.055 0.06"/>
+              <geom name="robot_14" class="collision_1" pos="0 0.08 0" quat="1 1 0 0" size="0.055 0.06"/>
               <geom name="robot_15" class="collision" size="0.038 0.19" pos="0 0 0.2"/>
 
               <body name="wrist_1_link_2" pos="0 0 0.392" quat="1 0 1 0" gravcomp="1">
@@ -427,5 +445,10 @@
 
     <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-100 100" ctrlrange="0 255"
       gainprm="0.0023137255 0 0" biasprm="0 -0.5 -0.001"/>
+    <!-- <general name="hande_fingers_actuator" class="hande" tendon="split_1" ctrlrange="0 255"
+      forcerange="-200 200" gaintype="affine" biastype="affine" gainprm="0.0298 0 0"
+      biasprm="0 -100 -10"/>
+     <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-5 5" ctrlrange="0 255"
+      gainprm="0.3137255 0 0" biasprm="0 -100 -10"/> -->
   </actuator> 
 </mujoco>
