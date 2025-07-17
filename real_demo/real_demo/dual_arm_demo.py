@@ -50,8 +50,8 @@ class Planner(Node):
 
         # Planner params
         self.num_dof = 12
-        # self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
-        self.init_joint_position = np.array([ 1.45, -0.88,  1.75, -2.45, -1.6,  -0. ,  -1.88, -1.19,  1.75, -2.01, -1.6,   0.  ])
+        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
+        # self.init_joint_position = np.array([ 1.45, -0.88,  1.75, -2.45, -1.6,  -0. ,  -1.88, -1.19,  1.75, -2.01, -1.6,   0.  ])
         num_batch = self.get_parameter('num_batch').get_parameter_value().integer_value
         num_steps = self.get_parameter('num_steps').get_parameter_value().integer_value
         maxiter_cem = self.get_parameter('maxiter_cem').get_parameter_value().integer_value
@@ -156,10 +156,10 @@ class Planner(Node):
 
         self.data = mujoco.MjData(self.model)
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
-        weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
-        weld_id_2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_2")
-        self.data.eq_active[weld_id_1] = True
-        self.data.eq_active[weld_id_2] = True
+        self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
+        self.weld_id_2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_2")
+        # self.data.eq_active[self.weld_id_1] = True
+        # self.data.eq_active[self.weld_id_2] = True
 
         # self.data.ctrl[:] = [0, 0] # Setting grippers to open position
 
@@ -216,6 +216,120 @@ class Planner(Node):
         # Setup control timer
         self.timer = self.create_timer(timestep, self.control_loop)
 
+    def control_loop(self):
+        """Main control loop running at fixed interval"""
+        start_time = time.time()
+
+        # if self.task == 'move':
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = np.array([-0.3, -0.2, 1])#self.data.site_xpos[self.planner.tcp_id_1]
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]] = np.array([-0.3, 0.2, 1])#self.data.site_xpos[self.planner.tcp_id_2]
+
+
+        if self.use_hardware:
+            # Get current state
+            current_pos_1 = np.array(self.rtde_r_1.getActualQ())
+            current_vel_1 = np.array(self.rtde_r_1.getActualQd())
+
+            current_pos_2 = np.array(self.rtde_r_2.getActualQ())
+            current_vel_2 = np.array(self.rtde_r_2.getActualQd())
+
+            current_pos = np.concatenate((current_pos_1, current_pos_2), axis=None)
+            current_vel = np.concatenate((current_vel_1, current_vel_2), axis=None)
+        else:
+            current_pos = self.data.qpos[self.joint_mask_pos]
+            current_vel = self.data.qvel[self.joint_mask_vel]
+        
+        
+        # Compute control
+        thetadot, cost, cost_g, cost_r, cost_c, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel, self.task)
+        
+        if self.use_hardware:
+            # Send velocity command
+            self.rtde_c_1.speedJ(thetadot[:self.planner.num_dof//2], acceleration=1.4, time=0.1)
+            self.rtde_c_2.speedJ(thetadot[self.planner.num_dof//2:], acceleration=1.4, time=0.1)
+
+            # Update MuJoCo state
+            current_pos = np.concatenate((np.array(self.rtde_r_1.getActualQ()), np.array(self.rtde_r_2.getActualQ())), axis=None)
+            self.data.qpos[self.joint_mask_pos] = current_pos
+            mujoco.mj_forward(self.model, self.data)
+        else:
+            self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+            self.data.qvel[self.joint_mask_vel] = thetadot
+            mujoco.mj_step(self.model, self.data)
+
+        current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_pos_1)
+        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], self.planner.target_rot_1)
+            
+        current_cost_g_2 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_2] - self.planner.target_pos_2)
+        current_cost_r_2 = quaternion_distance(self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
+
+        if self.task == 'pick':
+            if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
+                if self.task == 'pick' and self.grippers['1']['state']=='open':
+                    self.gripper_control(gripper_idx=1, action='close')
+                # elif self.task == 'move' and self.grippers['1']['state']=='close':
+                #     self.gripper_control(gripper_idx=1, action='open') 
+            
+            if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
+                if self.task == 'pick' and self.grippers['2']['state']=='open':
+                    self.gripper_control(gripper_idx=2, action='close') 
+                # elif self.task == 'move' and self.grippers['2']['state']=='close':
+                #     self.gripper_control(gripper_idx=2, action='open') 
+
+        if self.record_data_:
+            theta = self.data.qpos[self.joint_mask_pos]
+            self.record_data(theta=theta, thetadot=thetadot, theta_horizon=theta_horizon, thetadot_horizon=thetadot_horizon)
+        
+        # Update viewer
+        self.viewer.sync()
+        
+        # Print debug info
+        print(f'Task: {self.task} | '
+              f'Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms | '
+              f'Cost g: {"%.2f"%(float(cost_g))} | '
+              f'Cost c: {"%.2f"%(float(cost_c))} | '
+              f'Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} | '
+              f'Cost gr2: {"%.2f, %.2f"%(float(current_cost_g_2), float(current_cost_r_2))} | '
+              f'Cost: {np.round(cost, 2)}', flush=True)
+        
+    def gripper_control(self, gripper_idx=1, action='open'):
+
+        self.data.ctrl[gripper_idx-1] = 255 if action == 'close' else 0
+
+        if self.use_hardware:
+            self.req.position = 100 if action == 'close' else 0
+            self.req.speed = 255
+            self.req.force = 255
+            resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
+
+        self.grippers[str(gripper_idx)]['state'] = action
+
+        if self.grippers['1']['state'] == 'close' and self.grippers['2']['state'] == 'close' and self.task == 'pick':
+            # target_1_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
+            # target_2_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
+            # target_1_pos = self.data.qpos[target_2_addr : target_2_addr + 3] 
+            # target_1_rot = self.planner.target_rot_1
+            # target_2_pos = self.data.qpos[target_1_addr : target_1_addr + 3] 
+            # target_2_rot = self.planner.target_rot_2
+            # self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
+            # self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
+
+            # target_1_pos = self.model.body(name="target_1").pos.copy()
+            # target_1_rot = self.planner.target_rot_1.copy()
+            # target_2_pos = self.model.body(name="target_0").pos.copy()
+            # target_2_rot = self.planner.target_rot_2.copy()
+            # self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
+            # self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
+
+            self.data.eq_active[self.weld_id_1] = True
+            self.data.eq_active[self.weld_id_2] = True
+
+            print("Weld activated")
+
+            self.task = 'move'
+        
+        print(f"Gripper {gripper_idx} has complited {action} action.")
+
     def move_to_start(self):
         """Move robot to initial joint position"""
         self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
@@ -262,118 +376,6 @@ class Planner(Node):
         obstacle_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z])
         obstacle_rot = np.array([0.0, 1.0, 0, 0])
         self.planner.update_obstacle(obstacle_pos, obstacle_rot)
-
-    def control_loop(self):
-        """Main control loop running at fixed interval"""
-        start_time = time.time()
-
-        # if self.task == 'move':
-        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = np.array([-0.3, -0.2, 1])#self.data.site_xpos[self.planner.tcp_id_1]
-        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]] = np.array([-0.3, 0.2, 1])#self.data.site_xpos[self.planner.tcp_id_2]
-
-
-        if self.use_hardware:
-            # Get current state
-            current_pos_1 = np.array(self.rtde_r_1.getActualQ())
-            current_vel_1 = np.array(self.rtde_r_1.getActualQd())
-
-            current_pos_2 = np.array(self.rtde_r_2.getActualQ())
-            current_vel_2 = np.array(self.rtde_r_2.getActualQd())
-
-            current_pos = np.concatenate((current_pos_1, current_pos_2), axis=None)
-            current_vel = np.concatenate((current_vel_1, current_vel_2), axis=None)
-        else:
-            current_pos = self.data.qpos[self.joint_mask_pos]
-            current_vel = self.data.qvel[self.joint_mask_vel]
-        
-        
-        # Compute control
-        thetadot, cost, cost_g, cost_r, cost_c, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel)
-        
-        if self.use_hardware:
-            # Send velocity command
-            self.rtde_c_1.speedJ(thetadot[:self.planner.num_dof//2], acceleration=1.4, time=0.1)
-            self.rtde_c_2.speedJ(thetadot[self.planner.num_dof//2:], acceleration=1.4, time=0.1)
-
-            # Update MuJoCo state
-            current_pos = np.concatenate((np.array(self.rtde_r_1.getActualQ()), np.array(self.rtde_r_2.getActualQ())), axis=None)
-            self.data.qpos[self.joint_mask_pos] = current_pos
-            mujoco.mj_forward(self.model, self.data)
-        else:
-            self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
-            self.data.qvel[self.joint_mask_vel] = thetadot
-            mujoco.mj_step(self.model, self.data)
-
-        current_cost_g_1 = np.linalg.norm(
-            self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_pos_1)
-        current_cost_r_1 = quaternion_distance(
-            self.data.xquat[self.planner.hande_id_1], self.planner.target_rot_1)
-            
-        current_cost_g_2 = np.linalg.norm(
-            self.data.site_xpos[self.planner.tcp_id_2] - self.planner.target_pos_2)
-        current_cost_r_2 = quaternion_distance(
-            self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
-        
-        # if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
-        #     if self.task == 'pick' and self.grippers['2']['state']=='open':
-        #         self.gripper_control(gripper_idx=2, action='close') 
-        #     elif self.task == 'move' and self.grippers['2']['state']=='close':
-        #         self.gripper_control(gripper_idx=2, action='open') 
-        
-        # if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
-        #     print(self.data.qpos)
-        #     if self.task == 'pick' and self.grippers['1']['state']=='open':
-        #         self.gripper_control(gripper_idx=1, action='close')
-        #     elif self.task == 'move' and self.grippers['1']['state']=='close':
-        #         self.gripper_control(gripper_idx=1, action='open') 
-
-        if self.record_data_:
-            theta = self.data.qpos[self.joint_mask_pos]
-            self.record_data(theta=theta, thetadot=thetadot, theta_horizon=theta_horizon, thetadot_horizon=thetadot_horizon)
-        
-        # Update viewer
-        self.viewer.sync()
-        
-        # Print debug info
-        print(f'Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms | '
-              f'Cost g: {"%.2f"%(float(cost_g))} | '
-              f'Cost c: {"%.2f"%(float(cost_c))} | '
-              f'Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} | '
-              f'Cost gr2: {"%.2f, %.2f"%(float(current_cost_g_2), float(current_cost_r_2))} | '
-              f'Cost: {np.round(cost, 2)}', flush=True)
-        
-    def gripper_control(self, gripper_idx=1, action='open'):
-
-        self.data.ctrl[gripper_idx-1] = 255 if action == 'close' else 0
-
-        if self.use_hardware:
-            self.req.position = 100 if action == 'close' else 0
-            self.req.speed = 255
-            self.req.force = 255
-            resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
-
-        self.grippers[str(gripper_idx)]['state'] = action
-
-        if self.grippers['1']['state'] == 'close' and self.grippers['2']['state'] == 'close':
-            # target_1_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_0')]
-            # target_2_addr = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'target_1')]
-            # target_1_pos = self.data.qpos[target_2_addr : target_2_addr + 3] 
-            # target_1_rot = self.planner.target_rot_1
-            # target_2_pos = self.data.qpos[target_1_addr : target_1_addr + 3] 
-            # target_2_rot = self.planner.target_rot_2
-            # self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
-            # self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
-
-            target_1_pos = self.model.body(name="target_1").pos.copy()
-            target_1_rot = self.planner.target_rot_1.copy()
-            target_2_pos = self.model.body(name="target_0").pos.copy()
-            target_2_rot = self.planner.target_rot_2.copy()
-            self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
-            self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
-
-            self.task = 'move'
-
-        print(f"Gripper {gripper_idx} has complited {action} action.")
     
         
     def record_data(self, theta, thetadot, theta_horizon, thetadot_horizon):

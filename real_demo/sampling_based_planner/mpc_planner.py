@@ -81,12 +81,24 @@ class run_cem_planner:
         # self.target_pos_2 = model.body(name="target_1").pos
         # self.target_rot_2 = model.body(name="target_1").quat
 
-        self.target_pos_1 = model.body(name="target_0").pos
+        self.target_pos_1 = data.xpos[model.body(name="target_0").id]
         self.target_rot_1 = model.body(name="target_0").quat
         self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-180, [0, 1, 0]))
-        self.target_pos_2 = model.body(name="target_1").pos
+        self.target_pos_2 = data.xpos[model.body(name="target_1").id]
         self.target_rot_2 = model.body(name="target_1").quat
         self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
+        self.target_pos_3 = model.body(name="target_2").pos
+        self.target_rot_3 = model.body(name="target_2").quat
+
+        # self.target_pos_1 = model.body(name="target_0").pos
+        # self.target_rot_1 = model.body(name="target_0").quat
+        # self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-180, [0, 1, 0]))
+        # self.target_pos_2 = model.body(name="target_1").pos
+        # self.target_rot_2 = model.body(name="target_1").quat
+        # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
+        # self.target_pos_3 = model.body(name="target_2").pos
+        # self.target_rot_3 = model.body(name="target_2").quat
+        # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
 
         # target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_0')]
         # target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_1')]
@@ -99,10 +111,8 @@ class run_cem_planner:
         # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
         
         # Get obstacle reference
-        self.obstacle_pos = data.mocap_pos[
-            model.body_mocapid[model.body(name='obstacle').id]]
-        self.obstacle_rot = data.mocap_quat[
-            model.body_mocapid[model.body(name='obstacle').id]]
+        self.obstacle_pos = data.mocap_pos[model.body_mocapid[model.body(name='obstacle').id]]
+        self.obstacle_rot = data.mocap_quat[model.body_mocapid[model.body(name='obstacle').id]]
         
         # Get TCP references for both arms
         self.tcp_id_1 = model.site(name="tcp").id
@@ -112,8 +122,7 @@ class run_cem_planner:
         
         # Initialize MLP if inference is enabled
         if inference:
-            self.mlp_model = self._load_mlp_projection_model(
-                num_steps + 1 + 1, rnn, maxiter_projection)
+            self.mlp_model = self._load_mlp_projection_model(num_steps + 1 + 1, rnn, maxiter_projection)
 
     def _load_mlp_projection_model(self, num_feature, rnn_type, maxiter_projection):
         """Load the MLP projection model for inference"""
@@ -178,7 +187,7 @@ class run_cem_planner:
         self.obstacle_pos = obstacle_pos
         self.obstacle_rot = obstacle_rot
         
-    def compute_control(self, current_pos, current_vel):
+    def compute_control(self, current_pos, current_vel, task):
         """Compute optimal control using CEM/MPC for dual-arm system"""
         # Update MuJoCo state
         # self.data.qpos[self.cem.joint_mask_pos] = current_pos
@@ -199,10 +208,8 @@ class run_cem_planner:
             self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))  
         
         # Generate samples
-        self.xi_samples, self.key = self.cem.compute_xi_samples(
-            self.key, self.xi_mean, self.xi_cov)
-        xi_samples_reshaped = self.xi_samples.reshape(
-            self.num_batch, self.cem.num_dof, self.cem.nvar_single)
+        self.xi_samples, self.key = self.cem.compute_xi_samples(self.key, self.xi_mean, self.xi_cov)
+        xi_samples_reshaped = self.xi_samples.reshape(self.num_batch, self.cem.num_dof, self.cem.nvar_single)
 
         # MLP inference if enabled
         if self.inference:
@@ -241,6 +248,7 @@ class run_cem_planner:
         # object_2_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]]
 
         object_1_pos = self.data.qpos[self.cem.tray_idx:self.cem.tray_idx+7]
+        connect = True if task=="move" else False
 
         # CEM computation
         cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon, \
@@ -255,50 +263,49 @@ class run_cem_planner:
             self.target_rot_1,
             self.target_pos_2,
             self.target_rot_2,
+            self.target_pos_3,
+            self.target_rot_3,
             self.lamda_init,
             self.s_init,
             self.xi_samples,
             object_1_pos[:3],
-            object_1_pos[3:7]
+            object_1_pos[3:7],
+            connect
         )
 
         # Get mean velocity command (average middle 80% of trajectory)
         thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
 
-        # Check if we should switch to collision-free IK for each arm
-        current_cost_g_1 = np.linalg.norm(
-            self.data.site_xpos[self.tcp_id_1] - self.target_pos_1)
-        current_cost_r_1 = quaternion_distance(
-            self.data.xquat[self.hande_id_1], self.target_rot_1)
-            
-        current_cost_g_2 = np.linalg.norm(
-            self.data.site_xpos[self.tcp_id_2] - self.target_pos_2)
-        current_cost_r_2 = quaternion_distance(
-            self.data.xquat[self.hande_id_2], self.target_rot_2)
-        
-        joint_states = np.zeros(self.cem.joint_mask_pos.shape)
-        joint_states[self.cem.joint_mask_pos] = current_pos
-
-        # # Arm 1 control
-        # if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
-        #     ik_solver_1 = InverseKinematicsSolver(
-        #         self.model, joint_states, "tcp")
-        #     ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-        #     thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
-        # else:
-        #     thetadot_1 = thetadot_cem[:6]
-        
-        # # Arm 2 control
-        # if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
-        #     ik_solver_2 = InverseKinematicsSolver(
-        #         self.model, joint_states, "tcp_2")
-        #     ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
-        #     thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
-        # else:
-        #     thetadot_2 = thetadot_cem[6:]
-
         thetadot_1 = thetadot_cem[:6]
         thetadot_2 = thetadot_cem[6:]
+
+        if task == "pick":
+
+            # Check if we should switch to collision-free IK for each arm
+            current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.target_pos_1)
+            current_cost_r_1 = quaternion_distance(self.data.xquat[self.hande_id_1], self.target_rot_1)
+                
+            current_cost_g_2 = np.linalg.norm(self.data.site_xpos[self.tcp_id_2] - self.target_pos_2)
+            current_cost_r_2 = quaternion_distance(self.data.xquat[self.hande_id_2], self.target_rot_2)
+            
+            joint_states = np.zeros(self.cem.joint_mask_pos.shape)
+            joint_states[self.cem.joint_mask_pos] = current_pos
+
+            # Arm 1 control
+            # if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
+            #     print("Activated ik solution for arm 1")
+            #     ik_solver_1 = InverseKinematicsSolver(
+            #         self.model, joint_states, "tcp")
+            #     ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
+            #     thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+            
+            # # Arm 2 control
+            # if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
+            #     print("Activated ik solution for arm 2")
+            #     ik_solver_2 = InverseKinematicsSolver(
+            #         self.model, joint_states, "tcp_2")
+            #     ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
+            #     thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
 
         # Combine control commands
         thetadot = np.concatenate((thetadot_1, thetadot_2))
