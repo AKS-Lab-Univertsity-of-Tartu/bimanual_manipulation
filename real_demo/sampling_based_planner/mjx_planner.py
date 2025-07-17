@@ -181,6 +181,11 @@ class cem_planner():
 		self.hande_id_2 = self.model.body(name="hande_2").id
 		self.tcp_id_2 = self.model.site(name="tcp_2").id
 
+		self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
+
+		self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
+		self.weld_id_2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_2")
+
 		# self.object_0_qpos_idx = self.model.body_mocapid[self.model.body(name='object_0').id]
 		# self.object_1_qpos_idx = self.model.body_mocapid[self.model.body(name='object_1').id]
 
@@ -400,37 +405,44 @@ class cem_planner():
 		eef_rot_2 = mjx_data.xquat[self.hande_id_2]	
 		eef_pos_2 = mjx_data.site_xpos[self.tcp_id_2]
 		collision = mjx_data.contact.dist[self.mask]
+		tray_pos = mjx_data.qpos[self.tray_idx:self.tray_idx+7]
 
-		return mjx_data, (theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision)
+		return mjx_data, (theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos)
 
 
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_rollout_single(self, thetadot, init_pos, init_vel, object_0_pos, object_1_pos):
+	def compute_rollout_single(self, thetadot, init_pos, init_vel, object_0_pos, object_0_rot):
 
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
+		qpos = qpos.at[self.tray_idx:self.tray_idx+7].set(jnp.concatenate([object_0_pos, object_0_rot]))
+		eq_active = mjx_data.eq_active.at[self.weld_id_1].set(True)
+		eq_active = eq_active.at[self.weld_id_2].set(True)
 		# mocap_pos = mjx_data.mocap_pos.at[self.object_0_qpos_idx].set(object_0_pos)
 		# mocap_pos = mjx_data.mocap_pos.at[self.object_1_qpos_idx].set(object_1_pos)
 		# mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos)
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, eq_active=eq_active)
+
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
-		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = out
-		return theta.T.flatten(), eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision
+		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos = out
+		return theta.T.flatten(), eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos
 	
 
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_cost_single(self, theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2):
+	def compute_cost_single(self, theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2, tray_pos):
 
-		cost_g_1 = jnp.linalg.norm(eef_pos - target_pos, axis=1)
-		cost_g_2 = jnp.linalg.norm(eef_pos_2 - target_pos_2, axis=1)
-		cost_g = (np.sum(cost_g_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_g_2 * jnp.linspace(0, 1, self.num)))/2
+		# cost_g_1 = jnp.linalg.norm(eef_pos - target_pos, axis=1)
+		# cost_g_2 = jnp.linalg.norm(eef_pos_2 - target_pos_2, axis=1)
+		# cost_g = (np.sum(cost_g_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_g_2 * jnp.linspace(0, 1, self.num)))/2
 
-		dot_product = jnp.abs(jnp.dot(eef_rot/jnp.linalg.norm(eef_rot, axis=1).reshape(1, self.num).T, target_rot/jnp.linalg.norm(target_rot)))
-		dot_product = jnp.clip(dot_product, -1.0, 1.0)
-		cost_r_ = 2 * jnp.arccos(dot_product)
-		cost_r = cost_r_[-1] + jnp.sum(cost_r_[:-1])
+		# dot_product = jnp.abs(jnp.dot(eef_rot/jnp.linalg.norm(eef_rot, axis=1).reshape(1, self.num).T, target_rot/jnp.linalg.norm(target_rot)))
+		# dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		# cost_r_ = 2 * jnp.arccos(dot_product)
+		# cost_r = cost_r_[-1] + jnp.sum(cost_r_[:-1])
+
+		cost_g = jnp.linalg.norm(tray_pos[:, :3] - target_pos)
 
 		dot_product = jnp.abs(jnp.dot(eef_rot/jnp.linalg.norm(eef_rot, axis=1).reshape(1, self.num).T, target_rot/jnp.linalg.norm(target_rot)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
@@ -440,7 +452,14 @@ class cem_planner():
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_2 = 2 * jnp.arccos(dot_product)
 
-		cost_r = (np.sum(cost_r_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_2 * jnp.linspace(0, 1, self.num)))/2
+		tray_rot = tray_pos[:, 3:7]
+		targert_tray_rot = jnp.array([0, 0, 0, 1])
+
+		dot_product = jnp.abs(jnp.dot(tray_rot/jnp.linalg.norm(tray_rot, axis=1).reshape(1, self.num).T, targert_tray_rot/jnp.linalg.norm(targert_tray_rot)))
+		dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		cost_r_3 = 2 * jnp.arccos(dot_product)
+
+		cost_r = (np.sum(cost_r_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_2 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_3 * jnp.linspace(0, 1, self.num)))/3
  
 		y = 0.2 # Higher y implies stricter condition on g to be positive
 		collision = collision.T
@@ -488,7 +507,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def cem_iter(self, carry,  scan_over):
 
-		init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, object_0_pos, object_1_pos = carry
+		init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, object_0_pos, object_0_rot = carry
 
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
@@ -527,14 +546,14 @@ class cem_planner():
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
 
 
-		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, object_0_pos, object_1_pos)
-		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2)
+		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos = self.compute_rollout_batch(thetadot, init_pos, init_vel, object_0_pos, object_0_rot)
+		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2, tray_pos)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
 
-		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, object_0_pos, object_1_pos)
+		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, object_0_pos, object_0_rot)
 
 		return carry, (cost_batch, cost_g_batch, cost_r_batch, cost_c_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
@@ -554,7 +573,7 @@ class cem_planner():
 		s_init,
 		xi_samples,
 		object_0_pos,
-        object_1_pos
+        object_0_rot
 		):
 
 
@@ -566,14 +585,11 @@ class cem_planner():
 		target_pos_2 = jnp.tile(target_pos_2, (self.num_batch, 1))
 		target_rot_2 = jnp.tile(target_rot_2, (self.num_batch, 1))
 
-		# object_0_pos = jnp.tile(object_0_pos, (self.num_batch, 1))
-		# object_1_pos = jnp.tile(object_1_pos, (self.num_batch, 1))
-
 		state_term = thetadot_init	
 		
 		key, subkey = jax.random.split(self.key)
 
-		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, object_0_pos, object_1_pos)
+		carry = (init_pos, init_vel, target_pos, target_rot, target_pos_2, target_rot_2, xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, object_0_pos, object_0_rot)
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)

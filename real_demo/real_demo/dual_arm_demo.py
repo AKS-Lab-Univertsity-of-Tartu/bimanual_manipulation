@@ -50,7 +50,8 @@ class Planner(Node):
 
         # Planner params
         self.num_dof = 12
-        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
+        # self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
+        self.init_joint_position = np.array([ 1.45, -0.88,  1.75, -2.45, -1.6,  -0. ,  -1.88, -1.19,  1.75, -2.01, -1.6,   0.  ])
         num_batch = self.get_parameter('num_batch').get_parameter_value().integer_value
         num_steps = self.get_parameter('num_steps').get_parameter_value().integer_value
         maxiter_cem = self.get_parameter('maxiter_cem').get_parameter_value().integer_value
@@ -155,6 +156,10 @@ class Planner(Node):
 
         self.data = mujoco.MjData(self.model)
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
+        weld_id_2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_2")
+        self.data.eq_active[weld_id_1] = True
+        self.data.eq_active[weld_id_2] = True
 
         # self.data.ctrl[:] = [0, 0] # Setting grippers to open position
 
@@ -309,18 +314,18 @@ class Planner(Node):
         current_cost_r_2 = quaternion_distance(
             self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
         
-        if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
-            if self.task == 'pick' and self.grippers['2']['state']=='open':
-                self.gripper_control(gripper_idx=2, action='close') 
-            elif self.task == 'move' and self.grippers['2']['state']=='close':
-                self.gripper_control(gripper_idx=2, action='open') 
+        # if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
+        #     if self.task == 'pick' and self.grippers['2']['state']=='open':
+        #         self.gripper_control(gripper_idx=2, action='close') 
+        #     elif self.task == 'move' and self.grippers['2']['state']=='close':
+        #         self.gripper_control(gripper_idx=2, action='open') 
         
-        if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
-            print(self.data.qpos)
-            if self.task == 'pick' and self.grippers['1']['state']=='open':
-                self.gripper_control(gripper_idx=1, action='close')
-            elif self.task == 'move' and self.grippers['1']['state']=='close':
-                self.gripper_control(gripper_idx=1, action='open') 
+        # if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
+        #     print(self.data.qpos)
+        #     if self.task == 'pick' and self.grippers['1']['state']=='open':
+        #         self.gripper_control(gripper_idx=1, action='close')
+        #     elif self.task == 'move' and self.grippers['1']['state']=='close':
+        #         self.gripper_control(gripper_idx=1, action='open') 
 
         if self.record_data_:
             theta = self.data.qpos[self.joint_mask_pos]

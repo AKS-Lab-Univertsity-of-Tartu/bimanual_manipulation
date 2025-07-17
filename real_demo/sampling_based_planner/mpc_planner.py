@@ -81,22 +81,22 @@ class run_cem_planner:
         # self.target_pos_2 = model.body(name="target_1").pos
         # self.target_rot_2 = model.body(name="target_1").quat
 
-        # self.target_pos_1 = model.body(name="target_0").pos
-        # self.target_rot_1 = model.body(name="target_0").quat
+        self.target_pos_1 = model.body(name="target_0").pos
+        self.target_rot_1 = model.body(name="target_0").quat
+        self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-180, [0, 1, 0]))
+        self.target_pos_2 = model.body(name="target_1").pos
+        self.target_rot_2 = model.body(name="target_1").quat
+        self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
+
+        # target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_0')]
+        # target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_1')]
+
+        # self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.03])
+        # self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
         # self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-90, [0, 1, 0]))
-        # self.target_pos_2 = model.body(name="target_1").pos
-        # self.target_rot_2 = model.body(name="target_1").quat
+        # self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.03])
+        # self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] 
         # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
-
-        target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_0')]
-        target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_1')]
-
-        self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.03])
-        self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
-        self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-90, [0, 1, 0]))
-        self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.03])
-        self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] 
-        self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
         
         # Get obstacle reference
         self.obstacle_pos = data.mocap_pos[
@@ -237,8 +237,10 @@ class run_cem_planner:
             self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
-        object_1_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]]
-        object_2_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]]
+        # object_1_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]]
+        # object_2_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]]
+
+        object_1_pos = self.data.qpos[self.cem.tray_idx:self.cem.tray_idx+7]
 
         # CEM computation
         cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon, \
@@ -256,8 +258,8 @@ class run_cem_planner:
             self.lamda_init,
             self.s_init,
             self.xi_samples,
-            object_1_pos,
-            object_2_pos
+            object_1_pos[:3],
+            object_1_pos[3:7]
         )
 
         # Get mean velocity command (average middle 80% of trajectory)
@@ -277,23 +279,26 @@ class run_cem_planner:
         joint_states = np.zeros(self.cem.joint_mask_pos.shape)
         joint_states[self.cem.joint_mask_pos] = current_pos
 
-        # Arm 1 control
-        if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
-            ik_solver_1 = InverseKinematicsSolver(
-                self.model, joint_states, "tcp")
-            ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
-        else:
-            thetadot_1 = thetadot_cem[:6]
+        # # Arm 1 control
+        # if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
+        #     ik_solver_1 = InverseKinematicsSolver(
+        #         self.model, joint_states, "tcp")
+        #     ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
+        #     thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+        # else:
+        #     thetadot_1 = thetadot_cem[:6]
         
-        # Arm 2 control
-        if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
-            ik_solver_2 = InverseKinematicsSolver(
-                self.model, joint_states, "tcp_2")
-            ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
-            thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
-        else:
-            thetadot_2 = thetadot_cem[6:]
+        # # Arm 2 control
+        # if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
+        #     ik_solver_2 = InverseKinematicsSolver(
+        #         self.model, joint_states, "tcp_2")
+        #     ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
+        #     thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+        # else:
+        #     thetadot_2 = thetadot_cem[6:]
+
+        thetadot_1 = thetadot_cem[:6]
+        thetadot_2 = thetadot_cem[6:]
 
         # Combine control commands
         thetadot = np.concatenate((thetadot_1, thetadot_2))
