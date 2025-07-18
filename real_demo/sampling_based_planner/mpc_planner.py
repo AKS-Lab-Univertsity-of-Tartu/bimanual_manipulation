@@ -248,7 +248,7 @@ class run_cem_planner:
         # object_2_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]]
 
         object_1_pos = self.data.qpos[self.cem.tray_idx:self.cem.tray_idx+7]
-        connect = True if task=="move" else False
+        connect = 1 if task=="move" else 0
 
         # CEM computation
         cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon, \

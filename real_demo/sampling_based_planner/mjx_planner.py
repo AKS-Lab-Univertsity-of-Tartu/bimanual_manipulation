@@ -162,8 +162,8 @@ class cem_planner():
 			name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, i)
 			if name is not None and (
 				name.startswith('robot') 
-				#or
-				# name.startswith('obstacle') or
+				or
+				name.startswith('object') 
 				# name.startswith('target')
 			):  
 				# print(f"Found geom: id={i}, name='{name}'")
@@ -395,19 +395,86 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def mjx_step(self, mjx_data, thetadot_single):
 
+		# qvel = mjx_data.qvel.at[self.joint_mask_vel].set(thetadot_single)
+		# mjx_data = mjx_data.replace(qvel=qvel)
+		# mjx_data = self.jit_step(self.mjx_model, mjx_data)
+
+		# theta = mjx_data.qpos[self.joint_mask_pos]
+		# eef_rot = mjx_data.xquat[self.hande_id]	
+		# eef_pos = mjx_data.site_xpos[self.tcp_id]
+		# eef_rot_2 = mjx_data.xquat[self.hande_id_2]	
+		# eef_pos_2 = mjx_data.site_xpos[self.tcp_id_2]
+		# collision = mjx_data.contact.dist[self.mask]
+		# tray_pos = mjx_data.qpos[self.tray_idx:self.tray_idx+7]
+
+		# return mjx_data, (theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos)
+	
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(thetadot_single)
 		mjx_data = mjx_data.replace(qvel=qvel)
+		
+		# Step the simulation
 		mjx_data = self.jit_step(self.mjx_model, mjx_data)
 
+		# Get joint positions and end-effector states
 		theta = mjx_data.qpos[self.joint_mask_pos]
-		eef_rot = mjx_data.xquat[self.hande_id]	
+		
+		# First arm end-effector
+		eef_rot = mjx_data.xquat[self.hande_id]    
 		eef_pos = mjx_data.site_xpos[self.tcp_id]
-		eef_rot_2 = mjx_data.xquat[self.hande_id_2]	
+		
+		# Second arm end-effector
+		eef_rot_2 = mjx_data.xquat[self.hande_id_2]    
 		eef_pos_2 = mjx_data.site_xpos[self.tcp_id_2]
+		
+		# Collision detection
 		collision = mjx_data.contact.dist[self.mask]
-		tray_pos = mjx_data.qpos[self.tray_idx:self.tray_idx+7]
 
-		return mjx_data, (theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos)
+		# tray_pos = mjx_data.qpos[self.tray_idx:self.tray_idx+7]
+
+		# tray_pos = (eef_pos+eef_pos_2)/2
+		tray_pos = jnp.concatenate([(eef_pos+eef_pos_2)/2, jnp.array([0,0,0,1])])
+
+		# Compute Jacobians using the current MJX API
+		def get_site_pos(qpos):
+			# Create new data with updated qpos
+			new_data = mjx_data.replace(qpos=qpos)
+			# Forward kinematics
+			new_data = mjx.forward(self.mjx_model, new_data)
+			return new_data.site_xpos[self.tcp_id]
+		
+		def get_site_rot(qpos):
+			new_data = mjx_data.replace(qpos=qpos)
+			new_data = mjx.forward(self.mjx_model, new_data)
+			return new_data.xquat[self.hande_id]
+		
+		def get_site_pos2(qpos):
+			new_data = mjx_data.replace(qpos=qpos)
+			new_data = mjx.forward(self.mjx_model, new_data)
+			return new_data.site_xpos[self.tcp_id_2]
+		
+		def get_site_rot2(qpos):
+			new_data = mjx_data.replace(qpos=qpos)
+			new_data = mjx.forward(self.mjx_model, new_data)
+			return new_data.xquat[self.hande_id_2]
+
+		# Compute Jacobians using JAX's automatic differentiation
+		jacp = jax.jacfwd(get_site_pos)(mjx_data.qpos)
+		jacr = jax.jacfwd(get_site_rot)(mjx_data.qpos)
+		jacp2 = jax.jacfwd(get_site_pos2)(mjx_data.qpos)
+		jacr2 = jax.jacfwd(get_site_rot2)(mjx_data.qpos)
+
+		# Compute EEF velocities
+		eef_vel_lin = jacp[:, self.joint_mask_pos] @ mjx_data.qvel[self.joint_mask_vel]
+		eef_vel_ang = jacr[:, self.joint_mask_pos] @ mjx_data.qvel[self.joint_mask_vel]
+		eef_vel_lin_2 = jacp2[:, self.joint_mask_pos] @ mjx_data.qvel[self.joint_mask_vel]
+		eef_vel_ang_2 = jacr2[:, self.joint_mask_pos] @ mjx_data.qvel[self.joint_mask_vel]
+
+		return mjx_data, (
+			theta, 
+			eef_pos, eef_rot, eef_vel_lin, eef_vel_ang,
+			eef_pos_2, eef_rot_2, eef_vel_lin_2, eef_vel_ang_2, 
+			collision, tray_pos
+		)
 
 
 	@partial(jax.jit, static_argnums=(0,))
@@ -416,22 +483,22 @@ class cem_planner():
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
-		qpos = qpos.at[self.tray_idx:self.tray_idx+7].set(jnp.concatenate([object_0_pos, object_0_rot]))
-		eq_active = mjx_data.eq_active.at[self.weld_id_1].set(connect)
-		eq_active = eq_active.at[self.weld_id_2].set(connect)
+		# qpos = qpos.at[self.tray_idx:self.tray_idx+7].set(jnp.concatenate([object_0_pos, object_0_rot]))
+		# eq_active = mjx_data.eq_active.at[self.weld_id_1].set(connect)
+		# eq_active = eq_active.at[self.weld_id_2].set(connect)
 		# mocap_pos = mjx_data.mocap_pos.at[self.object_0_qpos_idx].set(object_0_pos)
 		# mocap_pos = mjx_data.mocap_pos.at[self.object_1_qpos_idx].set(object_1_pos)
 		# mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos)
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, eq_active=eq_active)
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
-		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos = out
-		return theta.T.flatten(), eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos
+		theta, eef_pos, eef_rot, eef_vel_lin, eef_vel_ang, eef_pos_2, eef_rot_2, eef_vel_lin_2, eef_vel_ang_2, collision, tray_pos = out
+		return theta.T.flatten(), eef_pos, eef_rot, eef_vel_lin, eef_vel_ang, eef_pos_2, eef_rot_2, eef_vel_lin_2, eef_vel_ang_2, collision, tray_pos
 	
 
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_cost_single(self, theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2, target_pos_3, target_rot_3, tray_pos):
+	def compute_cost_single(self, theta, eef_pos, eef_rot, eef_vel_lin, eef_vel_ang, eef_pos_2, eef_rot_2, eef_vel_lin_2, eef_vel_ang_2, collision, target_pos, target_rot, target_pos_2, target_rot_2, target_pos_3, target_rot_3, tray_pos, connect):
 
 		cost_g_1 = jnp.linalg.norm(eef_pos - target_pos, axis=1)
 		cost_g_2 = jnp.linalg.norm(eef_pos_2 - target_pos_2, axis=1)
@@ -452,8 +519,10 @@ class cem_planner():
 		dot_product = jnp.abs(jnp.dot(tray_rot/jnp.linalg.norm(tray_rot, axis=1).reshape(1, self.num).T, target_rot_3/jnp.linalg.norm(target_rot_3)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_3 = 2 * jnp.arccos(dot_product)
+		cost_r_tray = np.sum(cost_r_3)
 
-		cost_r = (np.sum(cost_r_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_2 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_3 * jnp.linspace(0, 1, self.num)))/3
+		# cost_r = (np.sum(cost_r_1 * jnp.linspace(0, 1, self.num)) + np.sum(cost_r_2 * jnp.linspace(0, 1, self.num)))/2
+		cost_r = (np.sum(cost_r_1) + np.sum(cost_r_2))/2
  
 		y = 0.2 # Higher y implies stricter condition on g to be positive
 		collision = collision.T
@@ -461,10 +530,19 @@ class cem_planner():
 		cost_c = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision < 0)
 
 		cost_theta = jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T - self.init_joint_position)
+		
+		cost_eef_pos = jnp.linalg.norm(eef_pos[:, 2] - eef_pos_2[:, 2])
+		cost_eef_vel = jnp.linalg.norm(eef_vel_lin - eef_vel_lin_2)		
 
-		cost = self.cost_weights['w_pos']*cost_g + self.cost_weights['w_rot']*cost_r + self.cost_weights['w_col']*cost_c + 0.3*cost_theta + 20*cost_g_tray
+		distances = jnp.linalg.norm(eef_pos - eef_pos_2, axis=1)
+		d_ref = distances[0]
+		cost_dist = jnp.sum((distances - d_ref)**2)
 
-		return cost, cost_g, cost_r, cost_c
+
+		cost = self.cost_weights['w_pos']*cost_g + self.cost_weights['w_rot']*cost_r + self.cost_weights['w_col']*cost_c + 0.3*cost_theta + 15*cost_g_tray*connect[0] + 1*cost_r_tray*connect[0] + 5*cost_dist*connect[0]
+		cost +=5*cost_eef_pos + 0.1*cost_eef_vel
+
+		return cost, cost_g_tray, cost_r_tray, cost_c
 	
 	@partial(jax.jit, static_argnums=(0, ))
 	def compute_ellite_samples(self, cost_batch, xi_filtered):
@@ -540,8 +618,8 @@ class cem_planner():
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
 
 
-		theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, tray_pos = self.compute_rollout_batch(thetadot, init_pos, init_vel, object_0_pos, object_0_rot, connect)
-		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(theta, eef_pos, eef_rot, eef_pos_2, eef_rot_2, collision, target_pos, target_rot, target_pos_2, target_rot_2, target_pos_3, target_rot_3, tray_pos)
+		theta, eef_pos, eef_rot, eef_vel_lin, eef_vel_ang, eef_pos_2, eef_rot_2, eef_vel_lin_2, eef_vel_ang_2, collision, tray_pos = self.compute_rollout_batch(thetadot, init_pos, init_vel, object_0_pos, object_0_rot, connect)
+		cost_batch, cost_g_batch, cost_r_batch, cost_c_batch = self.compute_cost_batch(theta, eef_pos, eef_rot, eef_vel_lin, eef_vel_ang, eef_pos_2, eef_rot_2, eef_vel_lin_2, eef_vel_ang_2, collision, target_pos, target_rot, target_pos_2, target_rot_2, target_pos_3, target_rot_3, tray_pos, connect)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
@@ -584,6 +662,8 @@ class cem_planner():
 
 		target_pos_3 = jnp.tile(target_pos_3, (self.num_batch, 1))
 		target_rot_3 = jnp.tile(target_rot_3, (self.num_batch, 1))
+
+		connect = jnp.tile(connect, (self.num_batch, 1))
 
 		state_term = thetadot_init	
 		

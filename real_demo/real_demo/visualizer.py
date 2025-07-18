@@ -185,11 +185,12 @@ class Visualizer(Node):
 
         if self.folder=="manual":
             theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
-            self.data.qpos[:self.num_dof] = theta
+            self.data.qpos[self.joint_mask_pos] = theta
         elif self.folder=="planner":
-            theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
+            thetadot = json.loads(self.data_files['trajectory'][self.step_idx]['thetadot'])
             # self.data.qvel[:self.num_dof] = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
-            self.data.qpos[:self.num_dof] = theta
+            # print(thetadot, flush=True)
+            self.data.qvel[self.joint_mask_vel] = thetadot
 
         target_1 = json.loads(self.data_files['trajectory'][self.step_idx]['target_1'])
         target_2 = json.loads(self.data_files['trajectory'][self.step_idx]['target_2'])
@@ -200,16 +201,20 @@ class Visualizer(Node):
         self.model.body(name='target_1').pos = target_2[:3]
         self.model.body(name='target_1').quat = target_2[3:]
 
-        mujoco.mj_forward(self.model, self.data)
+        np.set_printoptions(precision=2, suppress=True)
+        print(thetadot, flush=True)
+
+        mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
 
         if self.step_idx < len(self.data_files['trajectory'])-1:
             self.step_idx += 1
         else:
+            # print("restart", flush=True)
             self.step_idx = 0
             self.data.qpos[self.joint_mask_pos] = self.init_joint_position
             self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
-            mujoco.mj_forward(self.model, self.data)
+            mujoco.mj_step(self.model, self.data)
             self.viewer.sync()
 
             

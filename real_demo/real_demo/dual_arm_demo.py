@@ -134,6 +134,7 @@ class Planner(Node):
         model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.model.opt.timestep = timestep
+        self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
 
         joint_names_pos = list()
         joint_names_vel = list()
@@ -287,10 +288,13 @@ class Planner(Node):
         print(f'Task: {self.task} | '
               f'Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms | '
               f'Cost g: {"%.2f"%(float(cost_g))} | '
+              f'Cost r: {"%.2f"%(float(cost_r))} | '
               f'Cost c: {"%.2f"%(float(cost_c))} | '
               f'Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} | '
               f'Cost gr2: {"%.2f, %.2f"%(float(current_cost_g_2), float(current_cost_r_2))} | '
               f'Cost: {np.round(cost, 2)}', flush=True)
+        
+        print(self.data.qpos[self.tray_idx+3:self.tray_idx+7], self.model.body(name="target_2").quat)
         
     def gripper_control(self, gripper_idx=1, action='open'):
 
@@ -321,8 +325,8 @@ class Planner(Node):
             # self.planner.update_targets(target_idx=1, target_pos=target_1_pos, target_rot = target_1_rot)
             # self.planner.update_targets(target_idx=2, target_pos=target_2_pos, target_rot = target_2_rot)
 
-            self.data.eq_active[self.weld_id_1] = True
-            self.data.eq_active[self.weld_id_2] = True
+            # self.data.eq_active[self.weld_id_1] = True
+            # self.data.eq_active[self.weld_id_2] = True
 
             print("Weld activated")
 
