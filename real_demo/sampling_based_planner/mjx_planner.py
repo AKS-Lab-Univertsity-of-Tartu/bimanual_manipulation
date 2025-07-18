@@ -188,6 +188,7 @@ class cem_planner():
 
 		# self.object_0_qpos_idx = self.model.body_mocapid[self.model.body(name='object_0').id]
 		# self.object_1_qpos_idx = self.model.body_mocapid[self.model.body(name='object_1').id]
+		self.tray_mocap_idx = self.model.body_mocapid[self.model.body(name='tray_mocap').id]
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0))
@@ -434,6 +435,9 @@ class cem_planner():
 		# tray_pos = (eef_pos+eef_pos_2)/2
 		tray_pos = jnp.concatenate([(eef_pos+eef_pos_2)/2, jnp.array([0,0,0,1])])
 
+		mocap_pos = mjx_data.mocap_pos.at[self.tray_mocap_idx].set(tray_pos[:3]-jnp.array([0, 0, 0.1]))
+		mjx_data = mjx_data.replace(mocap_pos=mocap_pos)
+
 		# Compute Jacobians using the current MJX API
 		def get_site_pos(qpos):
 			# Create new data with updated qpos
@@ -539,7 +543,7 @@ class cem_planner():
 		cost_dist = jnp.sum((distances - d_ref)**2)
 
 
-		cost = self.cost_weights['w_pos']*cost_g + self.cost_weights['w_rot']*cost_r + self.cost_weights['w_col']*cost_c + 0.3*cost_theta + 15*cost_g_tray*connect[0] + 1*cost_r_tray*connect[0] + 5*cost_dist*connect[0]
+		cost = self.cost_weights['w_pos']*cost_g + self.cost_weights['w_rot']*cost_r + self.cost_weights['w_col']*cost_c + 0.3*cost_theta + 15*cost_g_tray*connect[0] + 1*cost_r_tray*connect[0] + 20*cost_dist*connect[0]
 		cost +=5*cost_eef_pos + 0.1*cost_eef_vel
 
 		return cost, cost_g_tray, cost_r_tray, cost_c

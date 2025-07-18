@@ -2,7 +2,7 @@
 
   <compiler angle="radian" meshdir="assets" autolimits="true"/>
 
-  <option iterations="1" ls_iterations="5"> 
+  <option iterations="1" ls_iterations="5" > 
     <flag eulerdamp="disable" sensor="disable" />
     <!-- <flag eulerdamp="disable" actuation="disable" sensor="disable"/> -->
   </option>
