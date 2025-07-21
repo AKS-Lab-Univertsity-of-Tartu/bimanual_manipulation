@@ -405,9 +405,6 @@
     <connect anchor="0 0 0" body1="right_follower" body2="right_coupler" solimp="0.95 0.99 0.001" solref="0.005 1"/>
     <connect anchor="0 0 0" body1="left_follower" body2="left_coupler" solimp="0.95 0.99 0.001" solref="0.005 1"/>
     <joint joint1="right_driver_joint" joint2="left_driver_joint" polycoef="0 1 0 0 0" />
-
-    <weld name="grasp_1" site2="tcp" site1="tray_1" active="false" />
-    <weld name="grasp_2" site2="tcp_2" site1="tray_2" active="false" />
   </equality>
 
   <tendon>
@@ -420,20 +417,6 @@
       <joint joint="left_driver_joint" coef="0.5"/>
     </fixed>
   </tendon>
-
-  <!-- <tendon>
-    <fixed name="split">
-      <joint joint="right_driver_joint" coef="0.5"/>
-      <joint joint="left_driver_joint" coef="0.5"/>
-    </fixed>
-  </tendon>
-
-  <equality>
-    <connect anchor="0 0 0" body1="right_follower" body2="right_coupler" solimp="0.95 0.99 0.001" solref="0.005 1"/>
-    <connect anchor="0 0 0" body1="left_follower" body2="left_coupler" solimp="0.95 0.99 0.001" solref="0.005 1"/>
-    <joint joint1="right_driver_joint" joint2="left_driver_joint" polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001"
-      solref="0.005 1"/>
-  </equality> -->
 
   <actuator>
     <!-- <general class="size3" name="shoulder_pan_1" joint="shoulder_pan_joint_1" group='0'/>

@@ -16,14 +16,13 @@ from io import StringIO
 
 class run_cem_planner:
     def __init__(self, model, data, num_dof=12, num_batch=500, num_steps=20, 
-                 maxiter_cem=1, maxiter_projection=5, w_pos=3.0, w_rot=0.5, 
-                 w_col=500.0, num_elite=0.05, timestep=0.05,
+                 maxiter_cem=1, maxiter_projection=5, num_elite=0.05, timestep=0.05,
                  position_threshold=0.06, rotation_threshold=0.1,
                  ik_pos_thresh=0.06, ik_rot_thresh=0.1, 
                  collision_free_ik_dt=0.5, inference=False, rnn=None,
                  max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
                  max_joint_acc=2.0, max_joint_jerk=4.0,
-                 device='cuda', table_1_pos=None, table_2_pos=None):
+                 device='cuda', table_1_pos=None, table_2_pos=None, cost_weights=None):
         
         # Initialize parameters
         self.model = model
@@ -33,9 +32,6 @@ class run_cem_planner:
         self.num_steps = num_steps
         self.maxiter_cem = maxiter_cem
         self.maxiter_projection = maxiter_projection
-        self.w_pos = w_pos
-        self.w_rot = w_rot
-        self.w_col = w_col
         self.num_elite = num_elite
         self.timestep = timestep
         self.position_threshold = position_threshold
@@ -45,16 +41,15 @@ class run_cem_planner:
         self.collision_free_ik_dt = collision_free_ik_dt
         self.inference = inference
         self.device = device
-        
+
+        self.cost_weights = cost_weights
+
         # Initialize CEM planner
         self.cem = cem_planner(
             num_dof=num_dof, 
             num_batch=num_batch, 
             num_steps=num_steps, 
             maxiter_cem=maxiter_cem,
-            w_pos=w_pos,
-            w_rot=w_rot,
-            w_col=w_col,
             num_elite=num_elite,
             timestep=timestep,
             maxiter_projection=maxiter_projection,
@@ -76,40 +71,22 @@ class run_cem_planner:
         self.key = jax.random.PRNGKey(0)
         
         # Get references for both arms
-        # self.target_pos_1 = model.body(name="target_0").pos
-        # self.target_rot_1 = model.body(name="target_0").quat
-        # self.target_pos_2 = model.body(name="target_1").pos
-        # self.target_rot_2 = model.body(name="target_1").quat
-
         self.target_pos_1 = data.xpos[model.body(name="target_0").id]
         self.target_rot_1 = model.body(name="target_0").quat
         self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-180, [0, 1, 0]))
+        self.target_1 = np.concatenate([self.target_pos_1, self.target_rot_1])
+
         self.target_pos_2 = data.xpos[model.body(name="target_1").id]
         self.target_rot_2 = model.body(name="target_1").quat
         self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
+        self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
+
         self.target_pos_3 = model.body(name="target_2").pos
         self.target_rot_3 = model.body(name="target_2").quat
+        self.target_3 = np.concatenate([self.target_pos_3, self.target_rot_3])
 
-        # self.target_pos_1 = model.body(name="target_0").pos
-        # self.target_rot_1 = model.body(name="target_0").quat
-        # self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-180, [0, 1, 0]))
-        # self.target_pos_2 = model.body(name="target_1").pos
-        # self.target_rot_2 = model.body(name="target_1").quat
-        # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
-        # self.target_pos_3 = model.body(name="target_2").pos
-        # self.target_rot_3 = model.body(name="target_2").quat
-        # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
+        print(self.target_1, self.target_2)
 
-        # target_1_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_0')]
-        # target_2_addr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, 'object_1')]
-
-        # self.target_pos_1 = data.qpos[target_1_addr : target_1_addr + 3] + np.array([0, 0, 0.03])
-        # self.target_rot_1 = data.qpos[target_1_addr + 3 : target_1_addr + 7]
-        # self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-90, [0, 1, 0]))
-        # self.target_pos_2 = data.qpos[target_2_addr : target_2_addr + 3] + np.array([0, 0, 0.03])
-        # self.target_rot_2 = data.qpos[target_2_addr + 3 : target_2_addr + 7] 
-        # self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(90, [0, 1, 0]))
-        
         # Get obstacle reference
         self.obstacle_pos = data.mocap_pos[model.body_mocapid[model.body(name='obstacle').id]]
         self.obstacle_rot = data.mocap_quat[model.body_mocapid[model.body(name='obstacle').id]]
@@ -189,10 +166,6 @@ class run_cem_planner:
         
     def compute_control(self, current_pos, current_vel, task):
         """Compute optimal control using CEM/MPC for dual-arm system"""
-        # Update MuJoCo state
-        # self.data.qpos[self.cem.joint_mask_pos] = current_pos
-        # self.data.qvel[self.cem.joint_mask_vel] = current_vel
-        # mujoco.mj_forward(self.model, self.data)
         
         # Handle covariance matrix numerical stability
         if np.isnan(self.xi_cov).any():
@@ -248,10 +221,15 @@ class run_cem_planner:
         # object_2_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]]
 
         object_1_pos = self.data.qpos[self.cem.tray_idx:self.cem.tray_idx+7]
-        connect = 1 if task=="move" else 0
+        if task == "pick":
+            self.cost_weights['pick'] = 1
+            self.cost_weights['move'] = 0
+        elif task == 'move':
+            self.cost_weights['pick'] = 0
+            self.cost_weights['move'] = 1
 
         # CEM computation
-        cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon, \
+        cost, best_cost_list, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
         primal_res, fixed_res, idx_min = self.cem.compute_cem(
             self.xi_mean,
@@ -259,18 +237,13 @@ class run_cem_planner:
             current_pos,
             current_vel,
             np.zeros(self.num_dof),  # Zero initial acceleration
-            self.target_pos_1,
-            self.target_rot_1,
-            self.target_pos_2,
-            self.target_rot_2,
-            self.target_pos_3,
-            self.target_rot_3,
+            self.target_1,
+            self.target_2,
+            self.target_3,
             self.lamda_init,
             self.s_init,
             self.xi_samples,
-            object_1_pos[:3],
-            object_1_pos[3:7],
-            connect
+            self.cost_weights
         )
 
         # Get mean velocity command (average middle 80% of trajectory)
@@ -310,4 +283,4 @@ class run_cem_planner:
         # Combine control commands
         thetadot = np.concatenate((thetadot_1, thetadot_2))
         
-        return thetadot, cost, best_cost_g, best_cost_r, best_cost_c, thetadot_horizon, theta_horizon
+        return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon
