@@ -15,7 +15,7 @@ import mujoco
 from mujoco import viewer
 
 from sampling_based_planner.mpc_planner import run_cem_planner
-from sampling_based_planner.quat_math import quaternion_distance, QuaternionOps
+from sampling_based_planner.quat_math import quaternion_distance, quaternion_multiply, rotation_quaternion, angle_between_lines_np, turn_quat
 
 
 from rtde_control import RTDEControlInterface as RTDEControl
@@ -65,7 +65,6 @@ class Planner(Node):
         position_threshold = self.get_parameter('position_threshold').get_parameter_value().double_value
         rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
 
-        self.qops = QuaternionOps()
 
         self.task = 'pick'
 
@@ -154,6 +153,12 @@ class Planner(Node):
         self.model.opt.timestep = timestep
         self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
 
+        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
+        target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
+
+        self.model.body(name='target_0').quat = target_0_rot
+        self.model.body(name='target_1').quat = target_1_rot
+
         joint_names_pos = list()
         joint_names_vel = list()
         for i in range(self.model.njnt):
@@ -208,6 +213,9 @@ class Planner(Node):
             table_2_pos=table_2_pos,
             cost_weights=cost_weights
         )
+
+        self.eef_pos_1_init = self.data.site_xpos[self.planner.tcp_id_1].copy()
+        self.eef_pos_2_init = self.data.site_xpos[self.planner.tcp_id_2].copy()
         
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
@@ -234,21 +242,20 @@ class Planner(Node):
         start_time = time.time()
 
         if self.task == 'move':
-            tray_pos = (self.data.site_xpos[self.planner.tcp_id_1]+self.data.site_xpos[self.planner.tcp_id_2])/2 - np.array([0, 0, 0.1])
+            eef_pos_1 = self.data.site_xpos[self.planner.tcp_id_1]
+            eef_pos_2 = self.data.site_xpos[self.planner.tcp_id_2]
+
+            tray_pos = (eef_pos_1+eef_pos_2)/2 - np.array([0, 0, 0.1])
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
-            # eef_rot_1 = self.data.xquat[self.planner.hande_id_1]
-            # eef_rot_2 = self.data.xquat[self.planner.hande_id_2]
+            tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+            tray_rot = turn_quat(self.eef_pos_1_init, self.eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init)
+            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
+            # print(tray_pos, tray_rot_init, tray_rot, flush=True)
 
             
-            # tray_rot = self.qops.slerp(eef_rot_1, eef_rot_1, 0.5)
-
-            # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
-            
-            #self.data.site_xpos[self.planner.tcp_id_1]
-            # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]] = np.array([-0.3, 0.2, 1])#self.data.site_xpos[self.planner.tcp_id_2]
-
-
+        self.eef_pos_1_init = self.data.site_xpos[self.planner.tcp_id_1].copy()
+        self.eef_pos_2_init = self.data.site_xpos[self.planner.tcp_id_2].copy()
         if self.use_hardware:
             # Get current state
             current_pos_1 = np.array(self.rtde_r_1.getActualQ())
@@ -281,24 +288,34 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = thetadot
             mujoco.mj_step(self.model, self.data)
 
-        current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_pos_1)
-        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], self.planner.target_rot_1)
+        current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_1[:3])
+        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], self.planner.target_1[3:])
             
-        current_cost_g_2 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_2] - self.planner.target_pos_2)
-        current_cost_r_2 = quaternion_distance(self.data.xquat[self.planner.hande_id_2], self.planner.target_rot_2)
+        current_cost_g_2 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_2] - self.planner.target_2[:3])
+        current_cost_r_2 = quaternion_distance(self.data.xquat[self.planner.hande_id_2], self.planner.target_2[3:])
 
-        if self.task == 'pick':
-            if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
-                if self.task == 'pick' and self.grippers['1']['state']=='open':
-                    self.gripper_control(gripper_idx=1, action='close')
-                # elif self.task == 'move' and self.grippers['1']['state']=='close':
-                #     self.gripper_control(gripper_idx=1, action='open') 
+        target_reached = (
+                current_cost_g_1 < self.grab_pos_thresh \
+                and current_cost_r_1 < self.grab_rot_thresh \
+                and current_cost_g_2 < self.grab_pos_thresh \
+                and current_cost_r_2 < self.grab_rot_thresh
+        )
+        if target_reached and self.task=='pick':
+            self.task = 'move'
+
+
+        # if self.task == 'pick':
+        #     if current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh:
+        #         if self.task == 'pick' and self.grippers['1']['state']=='open':
+        #             self.gripper_control(gripper_idx=1, action='close')
+        #         # elif self.task == 'move' and self.grippers['1']['state']=='close':
+        #         #     self.gripper_control(gripper_idx=1, action='open') 
             
-            if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
-                if self.task == 'pick' and self.grippers['2']['state']=='open':
-                    self.gripper_control(gripper_idx=2, action='close') 
-                # elif self.task == 'move' and self.grippers['2']['state']=='close':
-                #     self.gripper_control(gripper_idx=2, action='open') 
+        #     if current_cost_g_2 < self.grab_pos_thresh and current_cost_r_2 < self.grab_rot_thresh:
+        #         if self.task == 'pick' and self.grippers['2']['state']=='open':
+        #             self.gripper_control(gripper_idx=2, action='close') 
+        #         # elif self.task == 'move' and self.grippers['2']['state']=='close':
+        #         #     self.gripper_control(gripper_idx=2, action='open') 
 
         if self.record_data_:
             theta = self.data.qpos[self.joint_mask_pos]

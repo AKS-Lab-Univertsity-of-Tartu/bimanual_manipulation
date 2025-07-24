@@ -181,7 +181,7 @@ class cem_planner():
 
 		self.tray_mocap_idx = self.model.body_mocapid[self.model.body(name='tray_mocap').id]
 
-		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None))
+		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, None, None, None, None))
 		self.compute_boundary_vec_batch_single_dof = (jax.vmap(self.compute_boundary_vec_single_dof, in_axes = (0)  )) # vmap parrallelization takes place over first axis
 		self.compute_projection_batched_over_dof = jax.vmap(self.compute_projection_single_dof, in_axes=(0, 0, 0, 0, 0)) # vmap parrallelization takes place over first axis
@@ -383,25 +383,86 @@ class cem_planner():
 
 		return primal_sol, primal_residuals, fixed_point_residuals
 
-	def quat_normalize(self, q):
-		return q / jnp.linalg.norm(q)
+	def angle_between_lines_np(self, p1, p2, p3, p4): 
+		""" 
+		Calculates the angle between two lines using NumPy. 
 
-	def quat_conjugate(self, q):
-		w, x, y, z = q
-		return jnp.array([w, -x, -y, -z])
+		Args: 
+		p1, p2: Endpoints of the first line ((x1, y1), (x2, y2)). 
+		p3, p4: Endpoints of the second line ((x3, y3), (x4, y4)). 
 
-	def quat_mul(self, q1, q2):
-		# Hamilton product (q1 * q2), both in [w, x, y, z]
+		Returns: 
+		The angle in degrees between the two lines. 
+		""" 
+		# Create vectors from the points 
+		v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]]) 
+		v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]]) 
+
+		# Calculate the dot product 
+		dot_product = jnp.dot(v1, v2) 
+
+		# Calculate the cosine of the angle 
+		cos_angle = dot_product / (jnp.linalg.norm(v1)  * jnp.linalg.norm(v2) ) 
+		
+		# Ensure the value is within the valid domain for arccos to avoid floating point errors
+		cos_angle = jnp.clip(cos_angle, -1.0, 1.0)
+
+		# Calculate the angle in radians and convert to degrees 
+		angle_deg = jnp.degrees(jnp.arccos(cos_angle) ) 
+
+		return angle_deg 
+	
+	def quaternion_distance(self, q1, q2):
+		dot_product = jnp.abs(jnp.dot(q1, q2))
+		dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		return 2 * jnp.arccos(dot_product)
+
+	def rotation_quaternion(self, angle_deg, axis):
+		axis = axis / jnp.linalg.norm(axis)
+		angle_rad = jnp.deg2rad(angle_deg)
+		w = jnp.cos(angle_rad / 2)
+		x, y, z = axis * jnp.sin(angle_rad / 2)
+		return jnp.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
+
+	def quaternion_multiply(self, q1, q2):
 		w1, x1, y1, z1 = q1
 		w2, x2, y2, z2 = q2
-		w = w1*w2 - x1*x2 - y1*y2 - z1*z2
-		x = w1*x2 + x1*w2 + y1*z2 - z1*y2
-		y = w1*y2 - x1*z2 + y1*w2 + z1*x2
-		z = w1*z2 + x1*y2 - y1*x2 + z1*w2
-		return jnp.array([w, x, y, z])
+		
+		w = w2 * w1 - x2 * x1 - y2 * y1 - z2 * z1
+		x = w2 * x1 + x2 * w1 + y2 * z1 - z2 * y1
+		y = w2 * y1 - x2 * z1 + y2 * w1 + z2 * x1
+		z = w2 * z1 + x2 * y1 - y2 * x1 + z2 * w1
+		
+		return jnp.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
+	
+	def turn_tray(self, eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init):
+		# xy plane z-axis rotation
+		p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[1]), (eef_pos_2_init[0], eef_pos_2_init[1])
+		p3, p4 = (eef_pos_1[0], eef_pos_1[1]), (eef_pos_2[0], eef_pos_2[1])
+		z_rot = self.angle_between_lines_np(p1, p2, p3, p4)
+		tray_rot = self.quaternion_multiply(tray_rot_init, self.rotation_quaternion(z_rot, jnp.array([0, 0, 1])))
+
+		# # xz plane y-axis rotation
+		# p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_1[0], eef_pos_1[2])
+		# p3, p4 = (eef_pos_2_init[0], eef_pos_2_init[2]), (eef_pos_2[0], eef_pos_2[2])
+		# y_rot = self.angle_between_lines_np(p1, p2, p3, p4)
+		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(y_rot, [0, 1, 0]))
+
+		# # yz plane x-axis rotation
+		# p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_1[1], eef_pos_1[2])
+		# p3, p4 = (eef_pos_2_init[1], eef_pos_2_init[2]), (eef_pos_2[1], eef_pos_2[2])
+		# x_rot = self.angle_between_lines_np(p1, p2, p3, p4)
+		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(x_rot, [1, 0, 0]))
+
+		return tray_rot
+
+
+
 
 	@partial(jax.jit, static_argnums=(0,))
 	def mjx_step(self, mjx_data, thetadot_single):
+		eef_pos_1_init = mjx_data.site_xpos[self.tcp_id]
+		eef_pos_2_init = mjx_data.site_xpos[self.tcp_id_2]
 	
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(thetadot_single)
 		mjx_data = mjx_data.replace(qvel=qvel)
@@ -426,10 +487,11 @@ class cem_planner():
 		collision = mjx_data.contact.dist[self.mask]
 
 		# Set tray position and orientation
-		tray_pos = (eef_pos_1+eef_pos_2)/2
+		tray_pos = (eef_pos_1+eef_pos_2)/2	
+		tray_rot_init = mjx_data.mocap_quat[self.tray_mocap_idx]
+		tray_rot = self.turn_tray(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init)
 
-	
-		tray_rot = jnp.array([0,0,0,1])
+		# tray_rot = jnp.array([1, 0, 0, 0])
 
 		# Get quaternion in [x, y, z, w] format and convert to [w, x, y, z]
 		tray = jnp.concatenate([tray_pos, tray_rot])
@@ -482,12 +544,14 @@ class cem_planner():
 
 
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_rollout_single(self, thetadot, init_pos, init_vel):
+	def compute_rollout_single(self, thetadot, init_pos, init_vel, tray_init):
 
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
+		mocap_pos = mjx_data.mocap_pos.at[self.tray_mocap_idx].set(tray_init[:3])
+		mocap_quat = mjx_data.mocap_quat.at[self.tray_mocap_idx].set(tray_init[3:])
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos, mocap_quat=mocap_quat)
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
@@ -541,6 +605,11 @@ class cem_planner():
 		# Move tray to target position
 		cost_g_tray = jnp.linalg.norm(tray[:, :3] - target_3[:3])
 
+		dot_product = jnp.abs(jnp.dot(tray[:, 3:]/jnp.linalg.norm(tray[:, 3:], axis=1).reshape(1, self.num).T, target_3[3:]/jnp.linalg.norm(target_3[3:])))
+		dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		cost_r_tray = 2 * jnp.arccos(dot_product)
+		cost_r_tray = jnp.sum(cost_r_tray)
+
 		cost = (
 			cost_weights['collision']*cost_c +
 			cost_weights['theta']*cost_theta +
@@ -551,7 +620,8 @@ class cem_planner():
 			cost_weights['pick']*cost_weights['position']*cost_g +
 
 			cost_weights['move']*cost_weights['distance']*cost_dist +
-			cost_weights['move']*cost_weights['position']*cost_g_tray
+			cost_weights['move']*cost_weights['position']*cost_g_tray +
+			cost_weights['move']*cost_weights['orientation']*cost_r_tray
 		)	
 
 		cost_list = jnp.array([cost_c, cost_weights['move']*cost_weights['distance']*cost_dist, cost_weights['pick']*cost_weights['position']*cost_g, cost_weights['pick']*cost_weights['orientation']*cost_r])
@@ -593,7 +663,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def cem_iter(self, carry,  scan_over):
 
-		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_1, target_2, target_3, cost_weights = carry
+		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_1, target_2, target_3, tray_init, cost_weights = carry
 
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
@@ -632,14 +702,14 @@ class cem_planner():
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
 
 
-		theta, eef_1, eef_vel_lin_1, eef_vel_ang_1, eef_2, eef_vel_lin_2, eef_vel_ang_2, tray, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel)
+		theta, eef_1, eef_vel_lin_1, eef_vel_ang_1, eef_2, eef_vel_lin_2, eef_vel_ang_2, tray, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, tray_init)
 		cost_batch, cost_list_batch = self.compute_cost_batch(theta, eef_1, eef_vel_lin_1, eef_vel_ang_1, eef_2, eef_vel_lin_2, eef_vel_ang_2, tray, collision, target_1, target_2, target_3, cost_weights)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_1, target_2, target_3, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_1, target_2, target_3, tray_init, cost_weights)
 
 		return carry, (cost_batch, cost_list_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
@@ -657,7 +727,8 @@ class cem_planner():
 		lamda_init,
 		s_init,
 		xi_samples,
-		cost_weights
+		cost_weights,
+		tray_init
 		):
 
 
@@ -678,7 +749,7 @@ class cem_planner():
 		
 		key, subkey = jax.random.split(self.key)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_1, target_2, target_3, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_1, target_2, target_3, tray_init, cost_weights)
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)

@@ -23,58 +23,61 @@ def quaternion_multiply(q1, q2):
     
     return np.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
 
-class QuaternionOps:
+def angle_between_lines_np(p1, p2, p3, p4): 
+    """ 
+    Calculates the angle between two lines using NumPy. 
 
-    def quat_normalize(self, q):
-        return q / np.linalg.norm(q)
+    Args: 
+    p1, p2: Endpoints of the first line ((x1, y1), (x2, y2)). 
+    p3, p4: Endpoints of the second line ((x3, y3), (x4, y4)). 
 
-    def quat_conjugate(self, q):
-        w, x, y, z = q
-        return np.array([w, -x, -y, -z])
+    Returns: 
+    The angle in degrees between the two lines. 
+    """ 
+    # Create vectors from the points 
+    v1 = np.array([p2[0] - p1[0], p2[1] - p1[1]]) 
+    v2 = np.array([p4[0] - p3[0], p4[1] - p3[1]]) 
 
-    def quat_mul(self, q1, q2):
-        # Hamilton product (q1 * q2), both in [w, x, y, z]
-        w1, x1, y1, z1 = q1
-        w2, x2, y2, z2 = q2
-        w = w1*w2 - x1*x2 - y1*y2 - z1*z2
-        x = w1*x2 + x1*w2 + y1*z2 - z1*y2
-        y = w1*y2 - x1*z2 + y1*w2 + z1*x2
-        z = w1*z2 + x1*y2 - y1*x2 + z1*w2
-        return np.array([w, x, y, z])
+    # Calculate the dot product 
+    dot_product = np.dot(v1, v2) 
 
-    def slerp(self, q1, q2, t):
-        # q1, q2: [w, x, y, z], normalized quaternions
-        # t: scalar interpolation parameter [0..1]
+    # Calculate the cosine of the angle 
+    cos_angle = dot_product / (np.linalg.norm(v1)  * np.linalg.norm(v2) ) 
+    
+    # Ensure the value is within the valid domain for arccos to avoid floating point errors
+    cos_angle = np.clip(cos_angle, -1.0, 1.0)
 
-        q1 = self.quat_normalize(q1)
-        q2 = self.quat_normalize(q2)
+    # Calculate the angle in radians and convert to degrees 
+    angle_deg = np.degrees(np.arccos(cos_angle) ) 
 
-        dot = np.dot(q1, q2)
+    # np.set_printoptions(precision=2, suppress=True)
+    # print(f'angle_between_lines_np: {float(dot_product), float(cos_angle), float(cos_angle), float(angle_deg)}', flush=True)
 
-        # If dot < 0, negate q2 to take shorter path
-        if dot < 0.0:
-            q2 = -q2
-            dot = -dot
+    return angle_deg 
 
-        DOT_THRESHOLD = 0.9995
+def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init):
+    # xy plane z-axis rotation
+    p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[1]), (eef_pos_2_init[0], eef_pos_2_init[1])
+    p3, p4 = (eef_pos_1[0], eef_pos_1[1]), (eef_pos_2[0], eef_pos_2[1])
+    z_rot = angle_between_lines_np(p1, p2, p3, p4)
+    tray_rot = quaternion_multiply(tray_rot_init, rotation_quaternion(z_rot, [0, 0, 1]))
 
-        if dot > DOT_THRESHOLD:
-            # If quaternions are very close, use linear interpolation
-            result = (1.0 - t) * q1 + t * q2
-            return self.quat_normalize(result)
+    # xz plane y-axis rotation
+    # p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
+    # p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
+    # y_rot = angle_between_lines_np(p1, p2, p3, p4)
+    # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(y_rot, [0, 1, 0]))
 
-        # Use SLERP formula
-        theta_0 = np.arccos(dot)        # angle between input quaternions
-        sin_theta_0 = np.sin(theta_0)
+    # yz plane x-axis rotation
+    # p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
+    # p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
+    # x_rot = angle_between_lines_np(p1, p2, p3, p4)
+    # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(x_rot, [1, 0, 0]))
 
-        theta = theta_0 * t
-        sin_theta = np.sin(theta)
+    # np.set_printoptions(precision=2, suppress=True)
+    # print(f"XY-coords:  (({p1[0]:.2f}, {p1[1]:.2f}), ({p2[0]:.2f}, {p2[1]:.2f})), (({p3[0]:.2f}, {p3[1]:.2f}), ({p4[0]:.2f}, {p4[1]:.2f})) | Z-Axis rotation: {float(y_rot)}", flush=True)
 
-        s1 = np.cos(theta) - dot * sin_theta / sin_theta_0
-        s2 = sin_theta / sin_theta_0
-
-        result = s1 * q1 + s2 * q2
-        return self.quat_normalize(result)
+    return tray_rot
 
 
 def main():

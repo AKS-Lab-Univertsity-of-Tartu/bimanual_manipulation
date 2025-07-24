@@ -73,12 +73,10 @@ class run_cem_planner:
         # Get references for both arms
         self.target_pos_1 = data.xpos[model.body(name="target_0").id]
         self.target_rot_1 = model.body(name="target_0").quat
-        self.target_rot_1 = quaternion_multiply(quaternion_multiply(self.target_rot_1, rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(-180, [0, 1, 0]))
         self.target_1 = np.concatenate([self.target_pos_1, self.target_rot_1])
 
         self.target_pos_2 = data.xpos[model.body(name="target_1").id]
         self.target_rot_2 = model.body(name="target_1").quat
-        self.target_rot_2 = quaternion_multiply(quaternion_multiply(self.target_rot_2, rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(180, [0, 1, 0]))
         self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
         self.target_pos_3 = model.body(name="target_2").pos
@@ -220,13 +218,17 @@ class run_cem_planner:
         # object_1_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]]
         # object_2_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_1').id]]
 
-        object_1_pos = self.data.qpos[self.cem.tray_idx:self.cem.tray_idx+7]
         if task == "pick":
             self.cost_weights['pick'] = 1
             self.cost_weights['move'] = 0
         elif task == 'move':
             self.cost_weights['pick'] = 0
             self.cost_weights['move'] = 1
+
+        tray_init = np.concatenate([
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]],
+            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+        ])
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
@@ -243,7 +245,8 @@ class run_cem_planner:
             self.lamda_init,
             self.s_init,
             self.xi_samples,
-            self.cost_weights
+            self.cost_weights,
+            tray_init
         )
 
         # Get mean velocity command (average middle 80% of trajectory)

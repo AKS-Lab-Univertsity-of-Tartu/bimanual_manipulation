@@ -13,6 +13,8 @@ import mujoco
 from mujoco import viewer
 import numpy as np
 
+from sampling_based_planner.quat_math import quaternion_distance, quaternion_multiply, rotation_quaternion, angle_between_lines_np, turn_quat
+
 from rtde_control import RTDEControlInterface as RTDEControl
 from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
@@ -144,6 +146,14 @@ class Visualizer(Node):
             self.model.body(name='table_2').pos = json.loads(self.setup['table_2'])
             self.model.body(name='table2_marker').pos = json.loads(self.setup['marker_2'])
 
+            self.tcp_id_1 = self.model.site(name="tcp").id
+            self.hande_id_1 = self.model.body(name="hande").id
+            self.tcp_id_2 = self.model.site(name="tcp_2").id
+            self.hande_id_2 = self.model.body(name="hande_2").id
+
+            self.eef_pos_1_init = self.data.site_xpos[self.tcp_id_1].copy()
+            self.eef_pos_2_init = self.data.site_xpos[self.tcp_id_2].copy()
+
             self.step_idx = 0
             self.timer = self.create_timer(self.model.opt.timestep, self.view_playback)
 
@@ -187,22 +197,28 @@ class Visualizer(Node):
             theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
             self.data.qpos[self.joint_mask_pos] = theta
         elif self.folder=="planner":
-            thetadot = json.loads(self.data_files['trajectory'][self.step_idx]['thetadot'])
+            theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
             # self.data.qvel[:self.num_dof] = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
             # print(thetadot, flush=True)
-            self.data.qvel[self.joint_mask_vel] = thetadot
+            self.data.qpos[self.joint_mask_pos] = theta
 
-        target_1 = json.loads(self.data_files['trajectory'][self.step_idx]['target_1'])
-        target_2 = json.loads(self.data_files['trajectory'][self.step_idx]['target_2'])
+        if self.step_idx >= 50:
+            eef_pos_1 = self.data.site_xpos[self.tcp_id_1]
+            eef_pos_2 = self.data.site_xpos[self.tcp_id_2]
 
-        self.model.body(name='target_0').pos = target_1[:3]
-        self.model.body(name='target_0').quat = target_1[3:]
+            tray_pos = (eef_pos_1+eef_pos_2)/2 - np.array([0, 0, 0.1])
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
-        self.model.body(name='target_1').pos = target_2[:3]
-        self.model.body(name='target_1').quat = target_2[3:]
+            tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+            tray_rot = turn_quat(self.eef_pos_1_init, self.eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init)
+            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
 
-        np.set_printoptions(precision=2, suppress=True)
-        print(thetadot, flush=True)
+            print(tray_pos, tray_rot_init, tray_rot, flush=True)
+
+        self.eef_pos_1_init = self.data.site_xpos[self.tcp_id_1].copy()
+        self.eef_pos_2_init = self.data.site_xpos[self.tcp_id_2].copy()
+
+        print(self.step_idx, flush=True)
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()

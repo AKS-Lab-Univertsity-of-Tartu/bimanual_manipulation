@@ -204,18 +204,21 @@
                       <geom mesh="coupler" name="hande_coupler" type="mesh" class="visual" rgba="0.1 0.1 0.1 1" />
                       <geom mesh="hande" name="hande_base" type="mesh" class="visual" rgba="0.1 0.1 0.1 1" />
                       <site name="tcp" pos="0 0 0.135"/>
+                      <site name="frame_x_3" size="0.005" type="box" fromto="0 0 0.135  0.1 0 0.135" rgba="1 0 0 0.3" group="1"/>
+                      <site name="frame_y_3" size="0.005" type="box" fromto="0 0 0.135  0 0.1 0.135" rgba="0 1 0 0.3" group="1"/> 
+                      <site name="frame_z_3" size="0.005" type="box" fromto="0 0 0.135  0 0 0.235" rgba="0 0 1 0.3" group="1"/>
                       <geom name="robot_0" class="collision" pos="0 0 0.04" quat="1 0 0 1" size="0.04 0.03"/>
 
                       <body name="hande_left_finger" pos="0 0 0.099" gravcomp="1">
                         <inertial pos="0.02262 -0.00759 0.00738" quat="0.871952 0.0369732 -0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
-                        <joint name="hande_left_finger_joint" class="hande_left_finger" pos="0 0 0" axis="1 0 0"/>
+                        <!-- <joint name="hande_left_finger_joint" class="hande_left_finger" pos="0 0 0" axis="1 0 0"/> -->
                         <geom mesh="left_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1" />
                         <geom name="robot_01" class="collision" pos="-0.03 0 0" quat="1 0 0 1" size="0.01 0.04" />
                       </body>
 
                       <body name="hande_right_finger" pos="0 0 0.099" gravcomp="1">
                         <inertial pos="-0.02262 0.00759 0.00738" quat="0.871952 -0.0369732 0.211073 0.440205" mass="0.03804" diaginertia="1.22763e-05 1.22763e-05 1.22763e-05"/>
-                        <joint name="hande_right_finger_joint" class="hande_right_finger" pos="0 0 0" axis="-1 0 0"/>
+                        <!-- <joint name="hande_right_finger_joint" class="hande_right_finger" pos="0 0 0" axis="-1 0 0"/> -->
                         <geom mesh="right_finger" type="mesh" group="1"  contype="0" conaffinity="0" rgba="0.4 0.4 0.4 1"/>
                         <geom name="robot_02" class="collision" pos="0.03 0 0" quat="1 0 0 1" size="0.01 0.04" />
                       </body>
@@ -293,6 +296,9 @@
                     <body name="hande_2" pos="0 0.1 0" quat="-1 1 0 0" childclass="2f85" gravcomp="1">
                       <geom class="visual" mesh="base_mount" material="black"/>
                       <site name="tcp_2" pos="0 0 0.135"/>
+                      <site name="frame_x_4" size="0.005" type="box" fromto="0 0 0.135  0.1 0 0.135" rgba="1 0 0 0.3" group="1"/>
+                      <site name="frame_y_4" size="0.005" type="box" fromto="0 0 0.135  0 0.1 0.135" rgba="0 1 0 0.3" group="1"/> 
+                      <site name="frame_z_4" size="0.005" type="box" fromto="0 0 0.135  0 0 0.235" rgba="0 0 1 0.3" group="1"/>
                       <!-- <geom class="collision" mesh="base_mount"/> -->
                       <geom name="robot_10" class="collision" pos="0 0 0.04" quat="1 0 0 1" size="0.04 0.02"/>
                       <body name="base" pos="0 0 0.0038" quat="1 0 0 -1" gravcomp="1">
@@ -305,14 +311,14 @@
                         <body name="right_driver" pos="0 0.0306011 0.054904" gravcomp="1">
                           <inertial mass="0.00899563" pos="2.96931e-12 0.0177547 0.00107314" quat="0.681301 0.732003 0 0"
                             diaginertia="1.72352e-06 1.60906e-06 3.22006e-07"/>
-                          <joint name="right_driver_joint" class="driver"/>
+                          <!-- <joint name="right_driver_joint" class="driver"/> -->
                           <geom class="visual" mesh="driver" material="gray"/>
                           <geom name="robot_101" class="collision" pos="0 0.03 0.02" quat="1 0 0 1" size="0.022 0.01"/>
                           <!-- <geom class="collision" mesh="driver"/> -->
                           <body name="right_coupler" pos="0 0.0315 -0.0041" gravcomp="1">
                             <inertial mass="0.0140974" pos="0 0.00301209 0.0232175" quat="0.705636 -0.0455904 0.0455904 0.705636"
                               diaginertia="4.16206e-06 3.52216e-06 8.88131e-07"/>
-                            <joint name="right_coupler_joint" class="coupler_2"/>
+                            <!-- <joint name="right_coupler_joint" class="coupler_2"/> -->
                             <geom class="visual" mesh="coupler_2" material="black"/>
                             <!-- <geom class="collision" mesh="coupler_2"/> -->
                           </body>
@@ -320,13 +326,13 @@
                         <body name="right_spring_link" pos="0 0.0132 0.0609" gravcomp="1">
                           <inertial mass="0.0221642" pos="-8.65005e-09 0.0181624 0.0212658" quat="0.663403 -0.244737 0.244737 0.663403"
                             diaginertia="8.96853e-06 6.71733e-06 2.63931e-06"/>
-                          <joint name="right_spring_link_joint" class="spring_link"/>
+                          <!-- <joint name="right_spring_link_joint" class="spring_link"/> -->
                           <geom class="visual" mesh="spring_link" material="black"/>
                           <!-- <geom class="collision" mesh="spring_link"/> -->
                           <body name="right_follower" pos="0 0.055 0.0375" gravcomp="1">
                             <inertial mass="0.0125222" pos="0 -0.011046 0.0124786" quat="1 0.1664 0 0"
                               diaginertia="2.67415e-06 2.4559e-06 6.02031e-07"/>
-                            <joint name="right_follower_joint" class="follower"/>
+                            <!-- <joint name="right_follower_joint" class="follower"/> -->
                             <geom class="visual" mesh="follower" material="black"/>
                             <!-- <geom class="collision" mesh="follower"/> -->
                             <body name="right_pad" pos="0 -0.0189 0.01352" gravcomp="1">
@@ -346,14 +352,14 @@
                         <body name="left_driver" pos="0 -0.0306011 0.054904" quat="0 0 0 1" gravcomp="1">
                           <inertial mass="0.00899563" pos="0 0.0177547 0.00107314" quat="0.681301 0.732003 0 0"
                             diaginertia="1.72352e-06 1.60906e-06 3.22006e-07"/>
-                          <joint name="left_driver_joint" class="driver"/>
+                          <!-- <joint name="left_driver_joint" class="driver"/> -->
                           <geom class="visual" mesh="driver" material="gray"/>
                           <geom name="robot_102" class="collision" pos="0 0.03 0.02" quat="1 0 0 1" size="0.022 0.01"/>
                           <!-- <geom class="collision" mesh="driver"/> -->
                           <body name="left_coupler" pos="0 0.0315 -0.0041" gravcomp="1">
                             <inertial mass="0.0140974" pos="0 0.00301209 0.0232175" quat="0.705636 -0.0455904 0.0455904 0.705636"
                               diaginertia="4.16206e-06 3.52216e-06 8.88131e-07"/>
-                            <joint name="left_coupler_joint" class="coupler_2"/>
+                            <!-- <joint name="left_coupler_joint" class="coupler_2"/> -->
                             <geom class="visual" mesh="coupler_2" material="black"/>
                             <!-- <geom class="collision" mesh="coupler_2"/> -->
                           </body>
@@ -361,13 +367,13 @@
                         <body name="left_spring_link" pos="0 -0.0132 0.0609" quat="0 0 0 1" gravcomp="1">
                           <inertial mass="0.0221642" pos="-8.65005e-09 0.0181624 0.0212658" quat="0.663403 -0.244737 0.244737 0.663403"
                             diaginertia="8.96853e-06 6.71733e-06 2.63931e-06"/>
-                          <joint name="left_spring_link_joint" class="spring_link"/>
+                          <!-- <joint name="left_spring_link_joint" class="spring_link"/> -->
                           <geom class="visual" mesh="spring_link" material="black"/>
                           <!-- <geom class="collision" mesh="spring_link"/> -->
                           <body name="left_follower" pos="0 0.055 0.0375" gravcomp="1">
                             <inertial mass="0.0125222" pos="0 -0.011046 0.0124786" quat="1 0.1664 0 0"
                               diaginertia="2.67415e-06 2.4559e-06 6.02031e-07"/>
-                            <joint name="left_follower_joint" class="follower"/>
+                            <!-- <joint name="left_follower_joint" class="follower"/> -->
                             <geom class="visual" mesh="follower" material="black"/>
                             <!-- <geom class="collision" mesh="follower"/> -->
                             <body name="left_pad" pos="0 -0.0189 0.01352" gravcomp="1">
@@ -395,19 +401,19 @@
     </body>
   </worldbody>
 
-  <contact>
+  <!-- <contact>
     <exclude body1="hande" body2="hande_left_finger" />
     <exclude body1="hande" body2="hande_right_finger" />
-  </contact>
+  </contact> -->
 
-  <equality>
+  <!-- <equality>
     <joint joint1="hande_left_finger_joint" joint2="hande_right_finger_joint" polycoef="0 1 0 0 0" />
     <connect anchor="0 0 0" body1="right_follower" body2="right_coupler" solimp="0.95 0.99 0.001" solref="0.005 1"/>
     <connect anchor="0 0 0" body1="left_follower" body2="left_coupler" solimp="0.95 0.99 0.001" solref="0.005 1"/>
     <joint joint1="right_driver_joint" joint2="left_driver_joint" polycoef="0 1 0 0 0" />
-  </equality>
+  </equality> -->
 
-  <tendon>
+  <!-- <tendon>
     <fixed name="split_1">
       <joint joint="hande_left_finger_joint" coef="0.5" />
       <joint joint="hande_right_finger_joint" coef="0.5" />
@@ -416,25 +422,25 @@
       <joint joint="right_driver_joint" coef="0.5"/>
       <joint joint="left_driver_joint" coef="0.5"/>
     </fixed>
-  </tendon>
+  </tendon> -->
 
-  <actuator>
+  <!-- <actuator> -->
     <!-- <general class="size3" name="shoulder_pan_1" joint="shoulder_pan_joint_1" group='0'/>
     <general class="size3" name="shoulder_lift_1" joint="shoulder_lift_joint_1" group='0'/>
     <general class="size3_limited" name="elbow_1" joint="elbow_joint_1" group='0'/>
     <general class="size1" name="wrist_1_1" joint="wrist_1_joint_1" group='0'/>
     <general class="size1" name="wrist_2_1" joint="wrist_2_joint_1" group='0'/>
     <general class="size1" name="wrist_3_1" joint="wrist_3_joint_1" group='0'/> -->
-    <general name="hande_fingers_actuator" class="hande" tendon="split_1" ctrlrange="0 255"
+    <!-- <general name="hande_fingers_actuator" class="hande" tendon="split_1" ctrlrange="0 255"
       forcerange="-100 100" gaintype="affine" biastype="affine" gainprm="0.000298 0 0"
       biasprm="0 -3 -0.9"/>
 
     <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-100 100" ctrlrange="0 255"
-      gainprm="0.0023137255 0 0" biasprm="0 -0.5 -0.001"/>
+      gainprm="0.0023137255 0 0" biasprm="0 -0.5 -0.001"/> -->
     <!-- <general name="hande_fingers_actuator" class="hande" tendon="split_1" ctrlrange="0 255"
       forcerange="-200 200" gaintype="affine" biastype="affine" gainprm="0.0298 0 0"
       biasprm="0 -100 -10"/>
      <general class="2f85" name="fingers_actuator" tendon="split_2" forcerange="-5 5" ctrlrange="0 255"
       gainprm="0.3137255 0 0" biasprm="0 -100 -10"/> -->
-  </actuator> 
+  <!-- </actuator>  -->
 </mujoco>
