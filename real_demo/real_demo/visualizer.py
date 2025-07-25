@@ -87,6 +87,8 @@ class Visualizer(Node):
         self.data = mujoco.MjData(self.model)
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        self.init_tray_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
+        self.init_tray_quat = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
 
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
@@ -153,6 +155,8 @@ class Visualizer(Node):
 
             self.eef_pos_1_init = self.data.site_xpos[self.tcp_id_1].copy()
             self.eef_pos_2_init = self.data.site_xpos[self.tcp_id_2].copy()
+            self.tray_site_1_init = self.data.site_xpos[self.model.site(name="tray_site_1").id].copy()
+            self.tray_site_2_init = self.data.site_xpos[self.model.site(name="tray_site_2").id].copy()
 
             self.step_idx = 0
             self.timer = self.create_timer(self.model.opt.timestep, self.view_playback)
@@ -210,7 +214,13 @@ class Visualizer(Node):
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
             tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-            tray_rot = turn_quat(self.eef_pos_1_init, self.eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init)
+
+            tray_site_1 = self.data.site_xpos[self.model.site(name="tray_site_1").id].copy()
+            tray_site_2 = self.data.site_xpos[self.model.site(name="tray_site_2").id].copy()
+
+            print(tray_site_1, eef_pos_1, flush=True)
+
+            tray_rot = turn_quat(tray_site_2, tray_site_1, eef_pos_1, eef_pos_2, tray_rot_init)
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
 
             print(tray_pos, tray_rot_init, tray_rot, flush=True)
@@ -230,6 +240,8 @@ class Visualizer(Node):
             self.step_idx = 0
             self.data.qpos[self.joint_mask_pos] = self.init_joint_position
             self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_pos
+            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_quat
             mujoco.mj_step(self.model, self.data)
             self.viewer.sync()
 

@@ -151,7 +151,7 @@ class Planner(Node):
         model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.model.opt.timestep = timestep
-        self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
+        # self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
 
         target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
         target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
@@ -249,13 +249,15 @@ class Planner(Node):
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
             tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-            tray_rot = turn_quat(self.eef_pos_1_init, self.eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init)
+            tray_site_1 = self.data.site_xpos[self.model.site(name="tray_site_1").id]
+            tray_site_2 = self.data.site_xpos[self.model.site(name="tray_site_2").id]
+            tray_rot = turn_quat(tray_site_1, tray_site_2, eef_pos_1, eef_pos_2, tray_rot_init)
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
             # print(tray_pos, tray_rot_init, tray_rot, flush=True)
 
             
-        self.eef_pos_1_init = self.data.site_xpos[self.planner.tcp_id_1].copy()
-        self.eef_pos_2_init = self.data.site_xpos[self.planner.tcp_id_2].copy()
+        # self.eef_pos_1_init = self.data.site_xpos[self.planner.tcp_id_1].copy()
+        # self.eef_pos_2_init = self.data.site_xpos[self.planner.tcp_id_2].copy()
         if self.use_hardware:
             # Get current state
             current_pos_1 = np.array(self.rtde_r_1.getActualQ())

@@ -250,7 +250,8 @@ class run_cem_planner:
         )
 
         # Get mean velocity command (average middle 80% of trajectory)
-        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
+        # thetadot_cem = thetadot_horizon[1]
+        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.7)], axis=0)
 
         thetadot_1 = thetadot_cem[:6]
         thetadot_2 = thetadot_cem[6:]
@@ -268,20 +269,20 @@ class run_cem_planner:
             joint_states[self.cem.joint_mask_pos] = current_pos
 
             # Arm 1 control
-            # if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
-            #     print("Activated ik solution for arm 1")
-            #     ik_solver_1 = InverseKinematicsSolver(
-            #         self.model, joint_states, "tcp")
-            #     ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-            #     thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+            if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
+                print("Activated ik solution for arm 1")
+                ik_solver_1 = InverseKinematicsSolver(
+                    self.model, joint_states, "tcp")
+                ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
+                thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
             
-            # # Arm 2 control
-            # if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
-            #     print("Activated ik solution for arm 2")
-            #     ik_solver_2 = InverseKinematicsSolver(
-            #         self.model, joint_states, "tcp_2")
-            #     ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
-            #     thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+            # Arm 2 control
+            if current_cost_g_2 < self.ik_pos_thresh and current_cost_r_2 < self.ik_rot_thresh:
+                print("Activated ik solution for arm 2")
+                ik_solver_2 = InverseKinematicsSolver(
+                    self.model, joint_states, "tcp_2")
+                ik_solver_2.set_target(self.target_pos_2, self.target_rot_2)
+                thetadot_2 = ik_solver_2.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][self.num_dof//2:]
 
         # Combine control commands
         thetadot = np.concatenate((thetadot_1, thetadot_2))

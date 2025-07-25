@@ -173,8 +173,10 @@ class cem_planner():
 
 		self.hande_id_2 = self.model.body(name="hande_2").id
 		self.tcp_id_2 = self.model.site(name="tcp_2").id
+		self.tray_site_1_id = self.model.site(name="tray_site_1").id
+		self.tray_site_2_id = self.model.site(name="tray_site_2").id
 
-		self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
+		# self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
 
 		self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
 		self.weld_id_2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_2")
@@ -398,19 +400,12 @@ class cem_planner():
 		v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]]) 
 		v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]]) 
 
-		# Calculate the dot product 
-		dot_product = jnp.dot(v1, v2) 
+		angle1 = jnp.arctan2(v1[1], v1[0])
+		angle2 = jnp.arctan2(v2[1], v2[0])
 
-		# Calculate the cosine of the angle 
-		cos_angle = dot_product / (jnp.linalg.norm(v1)  * jnp.linalg.norm(v2) ) 
-		
-		# Ensure the value is within the valid domain for arccos to avoid floating point errors
-		cos_angle = jnp.clip(cos_angle, -1.0, 1.0)
+		angle_rad = angle2 - angle1
 
-		# Calculate the angle in radians and convert to degrees 
-		angle_deg = jnp.degrees(jnp.arccos(cos_angle) ) 
-
-		return angle_deg 
+		return jnp.degrees(angle_rad)  
 	
 	def quaternion_distance(self, q1, q2):
 		dot_product = jnp.abs(jnp.dot(q1, q2))
@@ -461,8 +456,8 @@ class cem_planner():
 
 	@partial(jax.jit, static_argnums=(0,))
 	def mjx_step(self, mjx_data, thetadot_single):
-		eef_pos_1_init = mjx_data.site_xpos[self.tcp_id]
-		eef_pos_2_init = mjx_data.site_xpos[self.tcp_id_2]
+		# eef_pos_1_init = mjx_data.site_xpos[self.tcp_id]
+		# eef_pos_2_init = mjx_data.site_xpos[self.tcp_id_2]
 	
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(thetadot_single)
 		mjx_data = mjx_data.replace(qvel=qvel)
@@ -489,7 +484,9 @@ class cem_planner():
 		# Set tray position and orientation
 		tray_pos = (eef_pos_1+eef_pos_2)/2	
 		tray_rot_init = mjx_data.mocap_quat[self.tray_mocap_idx]
-		tray_rot = self.turn_tray(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init)
+		tray_site_1 = mjx_data.site_xpos[self.tray_site_1_id]
+		tray_site_2 = mjx_data.site_xpos[self.tray_site_2_id]
+		tray_rot = self.turn_tray(tray_site_1, tray_site_2, eef_pos_1, eef_pos_2, tray_rot_init)
 
 		# tray_rot = jnp.array([1, 0, 0, 0])
 
@@ -624,7 +621,12 @@ class cem_planner():
 			cost_weights['move']*cost_weights['orientation']*cost_r_tray
 		)	
 
-		cost_list = jnp.array([cost_c, cost_weights['move']*cost_weights['distance']*cost_dist, cost_weights['pick']*cost_weights['position']*cost_g, cost_weights['pick']*cost_weights['orientation']*cost_r])
+		cost_list = jnp.array([
+			cost_c, 
+			cost_weights['move']*cost_weights['distance']*cost_dist, 
+			cost_weights['pick']*cost_weights['position']*cost_g+cost_weights['move']*cost_weights['position']*cost_g_tray , 
+			cost_weights['pick']*cost_weights['orientation']*cost_r+cost_weights['move']*cost_weights['orientation']*cost_r_tray
+		])
 
 		return cost, cost_list
 	
