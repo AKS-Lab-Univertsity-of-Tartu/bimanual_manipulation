@@ -206,7 +206,7 @@ class Visualizer(Node):
             # print(thetadot, flush=True)
             self.data.qpos[self.joint_mask_pos] = theta
 
-        if self.step_idx >= 50:
+        if self.step_idx >= 40:
             eef_pos_1 = self.data.site_xpos[self.tcp_id_1]
             eef_pos_2 = self.data.site_xpos[self.tcp_id_2]
 
@@ -218,12 +218,8 @@ class Visualizer(Node):
             tray_site_1 = self.data.site_xpos[self.model.site(name="tray_site_1").id].copy()
             tray_site_2 = self.data.site_xpos[self.model.site(name="tray_site_2").id].copy()
 
-            print(tray_site_1, eef_pos_1, flush=True)
-
-            tray_rot = turn_quat(tray_site_2, tray_site_1, eef_pos_1, eef_pos_2, tray_rot_init)
+            tray_rot = turn_quat(tray_site_1, tray_site_2, eef_pos_1, eef_pos_2, tray_rot_init)
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
-
-            print(tray_pos, tray_rot_init, tray_rot, flush=True)
 
         self.eef_pos_1_init = self.data.site_xpos[self.tcp_id_1].copy()
         self.eef_pos_2_init = self.data.site_xpos[self.tcp_id_2].copy()

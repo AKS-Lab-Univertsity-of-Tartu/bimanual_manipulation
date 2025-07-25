@@ -49,6 +49,7 @@
 
     <body name="box" pos="-0.3 0.2 0.13" quat="1 0 0 0">
         <joint name="box" type="free"/>
+        <geom name="box_col" pos="0 0 0" quat="0.70711 0.0 0.70711 0.0" rgba="0 0 0.6 1" size="0.1 0.2" type="capsule" contype="3" conaffinity="3"/>
         <geom name="box" pos="0 0 0" rgba="0.6 0 0 1" size="0.3 0.1 0.1" type="box" contype="3" conaffinity="3"/>
     </body>
 

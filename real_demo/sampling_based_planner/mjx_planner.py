@@ -385,27 +385,87 @@ class cem_planner():
 
 		return primal_sol, primal_residuals, fixed_point_residuals
 
-	def angle_between_lines_np(self, p1, p2, p3, p4): 
-		""" 
-		Calculates the angle between two lines using NumPy. 
+	# def angle_between_lines_np(self, p1, p2, p3, p4): 
+	# 	""" 
+	# 	Calculates the angle between two lines using NumPy. 
 
-		Args: 
-		p1, p2: Endpoints of the first line ((x1, y1), (x2, y2)). 
-		p3, p4: Endpoints of the second line ((x3, y3), (x4, y4)). 
+	# 	Args: 
+	# 	p1, p2: Endpoints of the first line ((x1, y1), (x2, y2)). 
+	# 	p3, p4: Endpoints of the second line ((x3, y3), (x4, y4)). 
 
-		Returns: 
-		The angle in degrees between the two lines. 
-		""" 
-		# Create vectors from the points 
-		v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]]) 
-		v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]]) 
+	# 	Returns: 
+	# 	The angle in degrees between the two lines. 
+	# 	""" 
+	# 	# Create vectors from the points 
+	# 	v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]]) 
+	# 	v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]]) 
 
-		angle1 = jnp.arctan2(v1[1], v1[0])
-		angle2 = jnp.arctan2(v2[1], v2[0])
+	# 	angle1 = jnp.arctan2(v1[1], v1[0])
+	# 	angle2 = jnp.arctan2(v2[1], v2[0])
 
-		angle_rad = angle2 - angle1
+	# 	angle_rad = angle2 - angle1
 
-		return jnp.degrees(angle_rad)  
+	# 	return jnp.degrees(angle_rad)  
+	def angle_between_lines(self, p1, p2, p3, p4):
+		"""
+		Calculates the signed angle between two lines using JAX.
+		This version is JIT-compatible and uses jax.lax.cond for branching.
+		"""
+		# Create vectors from the points (p1->p2 and p3->p4)
+		v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]])
+		v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]])
+
+		# --- Define the functions for our conditional logic ---
+
+		def calculate_angle(operands):
+			"""The main logic path."""
+			v1_op, v2_op = operands
+			angle1 = jnp.arctan2(v1_op[1], v1_op[0])
+			angle2 = jnp.arctan2(v2_op[1], v2_op[0])
+			angle_rad = angle2 - angle1
+			return jnp.degrees(angle_rad)
+
+		def return_zero(operands):
+			"""The exception path."""
+			# Must return the same shape and dtype as the other branch
+			return 0.0
+
+		def check_parallel_and_calculate(operands):
+			"""Nested check for the dot product."""
+			v1_op, v2_op = operands
+			
+			# Normalize vectors for the dot product check
+			norm_v1 = jnp.linalg.norm(v1_op)
+			norm_v2 = jnp.linalg.norm(v2_op)
+			u1 = v1_op / norm_v1
+			u2 = v2_op / norm_v2
+			
+			dot_product = jnp.dot(u1, u2)
+			
+			# Second condition: Are the vectors parallel?
+			is_parallel = jnp.abs(dot_product - 1.0) < 0.001
+			
+			return jax.lax.cond(
+				is_parallel,
+				return_zero,          # If parallel, return 0
+				calculate_angle,      # If not parallel, calculate the angle
+				operands
+			)
+
+		# --- Execute the conditional logic ---
+		norm_v1 = jnp.linalg.norm(v1)
+		norm_v2 = jnp.linalg.norm(v2)
+		epsilon = 0.1
+
+		# First condition: Are the vectors long enough?
+		is_too_short = (norm_v1 < epsilon) | (norm_v2 < epsilon)
+
+		return jax.lax.cond(
+			is_too_short,
+			return_zero,                      # If too short, return 0
+			check_parallel_and_calculate,     # If long enough, proceed to the next check
+			(v1, v2)                          # The operands passed to the chosen function
+		)
 	
 	def quaternion_distance(self, q1, q2):
 		dot_product = jnp.abs(jnp.dot(q1, q2))
@@ -434,20 +494,20 @@ class cem_planner():
 		# xy plane z-axis rotation
 		p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[1]), (eef_pos_2_init[0], eef_pos_2_init[1])
 		p3, p4 = (eef_pos_1[0], eef_pos_1[1]), (eef_pos_2[0], eef_pos_2[1])
-		z_rot = self.angle_between_lines_np(p1, p2, p3, p4)
+		z_rot = self.angle_between_lines(p1, p2, p3, p4)
 		tray_rot = self.quaternion_multiply(tray_rot_init, self.rotation_quaternion(z_rot, jnp.array([0, 0, 1])))
 
 		# # xz plane y-axis rotation
-		# p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_1[0], eef_pos_1[2])
-		# p3, p4 = (eef_pos_2_init[0], eef_pos_2_init[2]), (eef_pos_2[0], eef_pos_2[2])
-		# y_rot = self.angle_between_lines_np(p1, p2, p3, p4)
-		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(y_rot, [0, 1, 0]))
+		p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
+		p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
+		y_rot = self.angle_between_lines(p1, p2, p3, p4)
+		tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(y_rot, jnp.array([0, 1, 0])))
 
 		# # yz plane x-axis rotation
-		# p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_1[1], eef_pos_1[2])
-		# p3, p4 = (eef_pos_2_init[1], eef_pos_2_init[2]), (eef_pos_2[1], eef_pos_2[2])
-		# x_rot = self.angle_between_lines_np(p1, p2, p3, p4)
-		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(x_rot, [1, 0, 0]))
+		p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
+		p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
+		x_rot = self.angle_between_lines(p1, p2, p3, p4)
+		tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(x_rot, jnp.array([1, 0, 0])))
 
 		return tray_rot
 
@@ -482,7 +542,7 @@ class cem_planner():
 		collision = mjx_data.contact.dist[self.mask]
 
 		# Set tray position and orientation
-		tray_pos = (eef_pos_1+eef_pos_2)/2	
+		tray_pos = (eef_pos_1+eef_pos_2)/2 - jnp.array([0, 0, 0.1])
 		tray_rot_init = mjx_data.mocap_quat[self.tray_mocap_idx]
 		tray_site_1 = mjx_data.site_xpos[self.tray_site_1_id]
 		tray_site_2 = mjx_data.site_xpos[self.tray_site_2_id]
@@ -493,7 +553,7 @@ class cem_planner():
 		# Get quaternion in [x, y, z, w] format and convert to [w, x, y, z]
 		tray = jnp.concatenate([tray_pos, tray_rot])
 
-		mocap_pos = mjx_data.mocap_pos.at[self.tray_mocap_idx].set(tray_pos-jnp.array([0, 0, 0.1]))
+		mocap_pos = mjx_data.mocap_pos.at[self.tray_mocap_idx].set(tray_pos)
 		mocap_quat = mjx_data.mocap_quat.at[self.tray_mocap_idx].set(tray_rot)
 		mjx_data = mjx_data.replace(mocap_pos=mocap_pos, mocap_quat=mocap_quat)
 
