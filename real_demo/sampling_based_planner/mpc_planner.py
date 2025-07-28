@@ -153,9 +153,11 @@ class run_cem_planner:
         if target_idx==1:
             self.target_pos_1 = target_pos
             self.target_rot_1 = target_rot
+            self.target_1 = np.concatenate([self.target_pos_1, self.target_rot_1])
         elif target_idx==2:
             self.target_pos_2 = target_pos
             self.target_rot_2 = target_rot
+            self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
         
     def update_obstacle(self, obstacle_pos, obstacle_rot):
         """Update obstacle position and rotation"""
@@ -251,10 +253,11 @@ class run_cem_planner:
 
         # Get mean velocity command (average middle 80% of trajectory)
         # thetadot_cem = thetadot_horizon[1]
-        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.7)], axis=0)
+        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
 
         thetadot_1 = thetadot_cem[:6]
         thetadot_2 = thetadot_cem[6:]
+
 
         if task == "pick":
 

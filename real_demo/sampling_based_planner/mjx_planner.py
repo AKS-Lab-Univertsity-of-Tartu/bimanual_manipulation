@@ -125,7 +125,7 @@ class cem_planner():
 		self.model.body(name='table_1').pos = table_1_pos
 		self.model.body(name='table_2').pos = table_2_pos
 
-		self.tray_dim = 0.32
+		self.tray_dim = 0.34
 		self.tray_quat = jnp.array([0,0,0,1])
 
 		self.mjx_model = mjx.put_model(self.model)
@@ -178,8 +178,8 @@ class cem_planner():
 
 		# self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
 
-		self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
-		self.weld_id_2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_2")
+		# self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
+		# self.weld_id_2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_2")
 
 		self.tray_mocap_idx = self.model.body_mocapid[self.model.body(name='tray_mocap').id]
 
@@ -405,7 +405,8 @@ class cem_planner():
 
 	# 	angle_rad = angle2 - angle1
 
-	# 	return jnp.degrees(angle_rad)  
+	# 	return jnp.degrees(angle_rad)
+	# @partial(jax.jit, static_argnums=(0,))  
 	def angle_between_lines(self, p1, p2, p3, p4):
 		"""
 		Calculates the signed angle between two lines using JAX.
@@ -467,11 +468,13 @@ class cem_planner():
 			(v1, v2)                          # The operands passed to the chosen function
 		)
 	
+	@partial(jax.jit, static_argnums=(0,))
 	def quaternion_distance(self, q1, q2):
 		dot_product = jnp.abs(jnp.dot(q1, q2))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		return 2 * jnp.arccos(dot_product)
 
+	@partial(jax.jit, static_argnums=(0,))
 	def rotation_quaternion(self, angle_deg, axis):
 		axis = axis / jnp.linalg.norm(axis)
 		angle_rad = jnp.deg2rad(angle_deg)
@@ -479,6 +482,7 @@ class cem_planner():
 		x, y, z = axis * jnp.sin(angle_rad / 2)
 		return jnp.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
 
+	@partial(jax.jit, static_argnums=(0,))
 	def quaternion_multiply(self, q1, q2):
 		w1, x1, y1, z1 = q1
 		w2, x2, y2, z2 = q2
@@ -490,6 +494,7 @@ class cem_planner():
 		
 		return jnp.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
 	
+	@partial(jax.jit, static_argnums=(0,))
 	def turn_tray(self, eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init):
 		# xy plane z-axis rotation
 		p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[1]), (eef_pos_2_init[0], eef_pos_2_init[1])
@@ -520,6 +525,7 @@ class cem_planner():
 		# eef_pos_2_init = mjx_data.site_xpos[self.tcp_id_2]
 	
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(thetadot_single)
+		# qacc = mjx_data.qacc.at[self.joint_mask_vel].set(jnp.zeros(len(self.joint_mask_vel))+1)
 		mjx_data = mjx_data.replace(qvel=qvel)
 		
 		# Step the simulation

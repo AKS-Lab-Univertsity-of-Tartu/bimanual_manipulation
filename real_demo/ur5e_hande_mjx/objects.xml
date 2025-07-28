@@ -4,54 +4,54 @@
 <!-- For example, quat = [0.7071, 0.7071, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from a side -->
 <!-- For example, quat = [0.0, 1.0, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from top -->
 
-    <body name="tray" pos="-0.25 -0.2 0.045" quat="1 0 0 0">
+    <body name="tray" pos="-0.25 -0.1 0.045" quat="1 0 0 0">
         <!-- <joint name="tray" type="free"/> -->
-        <site name="tray_2" pos="0 0.15 0.1"/>
+        <!-- <site name="tray_2" pos="0 0.15 0.1"/> -->
         <site name="frame_x_5" size="0.005" type="box" fromto="0 0 0.06  0.1 0 0.06" rgba="1 0 0 1" group="1"/>
         <site name="frame_y_5" size="0.005" type="box" fromto="0 0 0.06  0 0.1 0.06" rgba="0 1 0 1" group="1"/> 
         <site name="frame_z_5" size="0.005" type="box" fromto="0 0 0.06  0 0 0.16" rgba="0 0 1 1" group="1"/>
-        <body name="target_0" pos="0 0.15 0.1" quat="1 0 0 0">
+        <body name="target_0" pos="0 0.17 0.1" quat="1 0 0 0">
             <geom name="target_0" rgba="0 0.6 0 0.6" size="0.01 0.01 0.01" type="box" contype="0" conaffinity="0"/>
             <site name="frame_x_0" size="0.005" type="box" fromto="0 0 0  0.1 0 0" rgba="1 0 0 1" group="1"/>
             <site name="frame_y_0" size="0.005" type="box" fromto="0 0 0  0 0.1 0" rgba="0 1 0 1" group="1"/> 
             <site name="frame_z_0" size="0.005" type="box" fromto="0 0 0  0 0 0.1" rgba="0 0 1 1" group="1"/>
         </body>
-        <site name="tray_1" pos="0 -0.15 0.1"/>
-        <body name="target_1" pos="0 -0.15 0.1" quat="1 0 0 0">
+        <!-- <site name="tray_1" pos="0 -0.15 0.1"/> -->
+        <body name="target_1" pos="0 -0.17 0.1" quat="1 0 0 0">
             <geom name="target_1" rgba="0 0.6 0 1" size="0.01 0.01 0.01" type="box" contype="0" conaffinity="0"/>
             <site name="frame_x_1" size="0.005" type="box" fromto="0 0 0  0.1 0 0" rgba="1 0 0 1" group="1"/>
             <site name="frame_y_1" size="0.005" type="box" fromto="0 0 0  0 0.1 0" rgba="0 1 0 1" group="1"/> 
             <site name="frame_z_1" size="0.005" type="box" fromto="0 0 0  0 0 0.1" rgba="0 0 1 1" group="1"/>
         </body>
-        <geom name="tray_base" type="box" size="0.15 0.15 0.02" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="1" conaffinity="1" friction="1 0.005 0.0001"/>
-        <geom name="tray_left" type="box" pos="-0.15 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="1" conaffinity="1"/>
-        <geom name="tray_right" type="box" pos="0.15 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="1" conaffinity="1"/>
-        <geom name="tray_back" type="box" pos="0 -0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="1" conaffinity="1"/>
-        <geom name="tray_front" type="box" pos="0 0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="1" conaffinity="1"/>
+        <geom name="tray_base" type="box" size="0.11 0.17 0.02" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="0" conaffinity="0" friction="1 0.005 0.0001"/>
+        <geom name="tray_left" type="box" pos="-0.11 0 0.05" size="0.01 0.17 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="0" conaffinity="0"/>
+        <geom name="tray_right" type="box" pos="0.11 0 0.05" size="0.01 0.17 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="0" conaffinity="0"/>
+        <geom name="tray_back" type="box" pos="0 -0.17 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="1" conaffinity="1"/>
+        <geom name="tray_front" type="box" pos="0 0.17 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 1"  mass="0.05" contype="1" conaffinity="1"/>
     </body>
 
-    <body mocap="true" name="tray_mocap" pos="-0.25 -0.2 0.045" quat="1 0 0 0">
+    <body mocap="true" name="tray_mocap" pos="-0.25 -0.1 0.045" quat="1 0 0 0">
         <site name="tray_site_1" pos="0 0.15 0.1"/>
         <site name="tray_site_2" pos="0 -0.15 0.1"/>
-        <geom name="object_tray_base_mocap" type="box" size="0.15 0.15 0.02" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2" friction="1 0.005 0.0001"/>
-        <geom name="object_tray_left_mocap" type="box" pos="-0.15 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
-        <geom name="object_tray_right_mocap" type="box" pos="0.15 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
-        <geom name="object_tray_back_mocap" type="box" pos="0 -0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
-        <geom name="object_tray_front_mocap" type="box" pos="0 0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
+        <geom name="object_tray_base_mocap" type="box" size="0.11 0.17 0.02" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2" friction="1 0.005 0.0001"/>
+        <geom name="object_tray_left_mocap" type="box" pos="-0.11 0 0.05" size="0.01 0.17 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
+        <geom name="object_tray_right_mocap" type="box" pos="0.11 0 0.05" size="0.01 0.17 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
+        <geom name="object_tray_back_mocap" type="box" pos="0 -0.17 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
+        <geom name="object_tray_front_mocap" type="box" pos="0 0.17 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
     </body>
 
-    <body name="target_2" pos="-0.3 0.2 0.4" quat="1 0 0 0">
+    <body name="target_2" pos="-0.3 0.2 0.3" quat="1 0 0 0">
         <geom name="target_2" pos="0 0 0" rgba="0 0.6 0 1" size="0.01 0.01 0.01" type="box" contype="0" conaffinity="0"/>
         <site name="frame_x_2" size="0.005" type="box" fromto="0 0 0  0.1 0 0" rgba="1 0 0 1" group="1"/>
         <site name="frame_y_2" size="0.005" type="box" fromto="0 0 0  0 0.1 0" rgba="0 1 0 1" group="1"/> 
         <site name="frame_z_2" size="0.005" type="box" fromto="0 0 0  0 0 0.1" rgba="0 0 1 1" group="1"/>
     </body>
 
-    <body name="box" pos="-0.3 0.2 0.13" quat="1 0 0 0">
+    <!-- <body name="box" pos="-0.3 0.2 0.13" quat="1 0 0 0">
         <joint name="box" type="free"/>
         <geom name="box_col" pos="0 0 0" quat="0.70711 0.0 0.70711 0.0" rgba="0 0 0.6 1" size="0.1 0.2" type="capsule" contype="3" conaffinity="3"/>
         <geom name="box" pos="0 0 0" rgba="0.6 0 0 1" size="0.3 0.1 0.1" type="box" contype="3" conaffinity="3"/>
-    </body>
+    </body> -->
 
     <!-- <body name="target_0" pos="-0.3 -0.2 0.35" quat="0 0 0 1">
         <geom name="target_0" pos="0 0 0" rgba="0 0.6 0 0.6" size="0.01 0.01 0.01" type="box" contype="0" conaffinity="0"/>

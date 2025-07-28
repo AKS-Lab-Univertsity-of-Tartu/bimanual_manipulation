@@ -148,6 +148,8 @@ class Visualizer(Node):
             self.model.body(name='table_2').pos = json.loads(self.setup['table_2'])
             self.model.body(name='table2_marker').pos = json.loads(self.setup['marker_2'])
 
+            self.viewer.cam.lookat[:] = self.model.body(name='table_1').pos
+
             self.tcp_id_1 = self.model.site(name="tcp").id
             self.hande_id_1 = self.model.body(name="hande").id
             self.tcp_id_2 = self.model.site(name="tcp_2").id
@@ -163,8 +165,8 @@ class Visualizer(Node):
 
     def move_to_start(self):
         """Move robot to initial joint position"""
-        self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
-        self.rtde_c_2.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
+        # self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        # self.rtde_c_2.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         print("Moved to initial pose.")
 
     def view_model(self):
@@ -253,6 +255,7 @@ class Visualizer(Node):
         table1_pose = self.model.body(name='table_1').pos + marker_diff
         self.model.body(name='table_1').pos = table1_pose
         self.model.body(name='table1_marker').pos = marker_pose
+        self.viewer.cam.lookat[:] = self.model.body(name='table_1').pos
 
     def table2_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
@@ -262,8 +265,12 @@ class Visualizer(Node):
         self.model.body(name='table2_marker').pos = marker_pose
 
     def object1_callback(self, msg):
-        marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
-        self.model.body(name='target_0').pos = marker_pose
+        # marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
+        # self.model.body(name='target_0').pos = marker_pose
+        pose = msg.pose
+        tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.07])
+        self.model.body(name='tray').pos = tray_pos
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
     def object2_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
