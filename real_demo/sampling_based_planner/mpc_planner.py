@@ -46,6 +46,7 @@ class run_cem_planner:
 
         # Initialize CEM planner
         self.cem = cem_planner(
+            model=model,
             num_dof=num_dof, 
             num_batch=num_batch, 
             num_steps=num_steps, 
@@ -72,11 +73,13 @@ class run_cem_planner:
         
         # Get references for both arms
         self.target_pos_1 = data.xpos[model.body(name="target_0").id]
-        self.target_rot_1 = model.body(name="target_0").quat
+        # self.target_rot_1 = model.body(name="target_0").quat
+        self.target_rot_1 = data.xquat[model.body(name="target_0").id]
         self.target_1 = np.concatenate([self.target_pos_1, self.target_rot_1])
 
         self.target_pos_2 = data.xpos[model.body(name="target_1").id]
-        self.target_rot_2 = model.body(name="target_1").quat
+        # self.target_rot_2 = model.body(name="target_1").quat
+        self.target_rot_2 = data.xquat[model.body(name="target_1").id]
         self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
         self.target_pos_3 = model.body(name="target_2").pos

@@ -155,9 +155,11 @@ class Planner(Node):
 
         target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
         target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
+        target_2_rot = quaternion_multiply(self.model.body(name="target_2").quat, rotation_quaternion(-90, [0, 0, 1]))
 
         self.model.body(name='target_0').quat = target_0_rot
         self.model.body(name='target_1').quat = target_1_rot
+        self.model.body(name='target_2').quat = target_2_rot
 
         joint_names_pos = list()
         joint_names_vel = list()
@@ -259,10 +261,17 @@ class Planner(Node):
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
             tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-            tray_site_1 = self.data.site_xpos[self.model.site(name="tray_site_1").id]
-            tray_site_2 = self.data.site_xpos[self.model.site(name="tray_site_2").id]
-            tray_rot = turn_quat(tray_site_1, tray_site_2, eef_pos_1, eef_pos_2, tray_rot_init)
+            # tray_site_1 = self.data.site_xpos[self.model.site(name="tray_site_1").id]
+            # tray_site_2 = self.data.site_xpos[self.model.site(name="tray_site_2").id]
+            tray_1_pos = self.data.xpos[self.model.body(name='target_0').id]
+            tray_2_pos = self.data.xpos[self.model.body(name='target_1').id]
+            tray_rot = turn_quat(tray_1_pos, tray_2_pos, eef_pos_1, eef_pos_2, tray_rot_init)
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
+
+            self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_0").id], target_rot=self.data.xquat[self.model.body(name="target_0").id])
+            self.planner.update_targets(target_idx=2, target_pos=self.data.xpos[self.model.body(name="target_1").id], target_rot=self.data.xquat[self.model.body(name="target_1").id])
+
+            
             # print(tray_pos, tray_rot_init, tray_rot, flush=True)
 
             
