@@ -78,6 +78,7 @@ class Planner(Node):
             'orientation': w_rot,
 
             'distance': 20.0,
+            'orientation_tray': 2,
 
             'pick': 0,
             'move': 0

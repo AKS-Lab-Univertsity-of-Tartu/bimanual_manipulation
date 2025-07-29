@@ -83,7 +83,7 @@ class run_cem_planner:
         self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
         self.target_pos_3 = model.body(name="target_2").pos
-        self.target_rot_3 = model.body(name="target_2").quat
+        self.target_rot_3 = data.xquat[model.body(name="target_2").id] #model.body(name="target_2").quat
         self.target_3 = np.concatenate([self.target_pos_3, self.target_rot_3])
 
         print(self.target_1, self.target_2)

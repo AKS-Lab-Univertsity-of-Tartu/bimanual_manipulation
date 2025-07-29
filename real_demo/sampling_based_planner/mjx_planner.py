@@ -464,12 +464,13 @@ class cem_planner():
 		# First condition: Are the vectors long enough?
 		is_too_short = (norm_v1 < epsilon) | (norm_v2 < epsilon)
 
-		return jax.lax.cond(
-			is_too_short,
-			return_zero,                      # If too short, return 0
-			check_parallel_and_calculate,     # If long enough, proceed to the next check
-			(v1, v2)                          # The operands passed to the chosen function
-		)
+		# return jax.lax.cond(
+		# 	is_too_short,
+		# 	return_zero,                      # If too short, return 0
+		# 	check_parallel_and_calculate,     # If long enough, proceed to the next check
+		# 	(v1, v2)                          # The operands passed to the chosen function
+		# )
+		return calculate_angle((v1, v2) )
 	
 	@partial(jax.jit, static_argnums=(0,))
 	def quaternion_distance(self, q1, q2):
@@ -505,17 +506,17 @@ class cem_planner():
 		z_rot = self.angle_between_lines(p1, p2, p3, p4)
 		tray_rot = self.quaternion_multiply(tray_rot_init, self.rotation_quaternion(z_rot, jnp.array([0, 0, 1])))
 
-		# # xz plane y-axis rotation
-		p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
-		p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
-		y_rot = self.angle_between_lines(p1, p2, p3, p4)
-		tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(y_rot, jnp.array([0, 1, 0])))
+		# # # xz plane y-axis rotation
+		# p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
+		# p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
+		# y_rot = self.angle_between_lines(p1, p2, p3, p4)
+		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(y_rot, jnp.array([0, 1, 0])))
 
-		# # yz plane x-axis rotation
-		p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
-		p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
-		x_rot = self.angle_between_lines(p1, p2, p3, p4)
-		tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(x_rot, jnp.array([1, 0, 0])))
+		# # # yz plane x-axis rotation
+		# p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
+		# p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
+		# x_rot = self.angle_between_lines(p1, p2, p3, p4)
+		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(x_rot, jnp.array([1, 0, 0])))
 
 		return tray_rot
 
@@ -656,7 +657,7 @@ class cem_planner():
 		# Move end effectors to pick positions
 		cost_g_1 = jnp.linalg.norm(eef_1[:, :3] - target_1[:3], axis=1)
 		cost_g_2 = jnp.linalg.norm(eef_2[:, :3] - target_2[:3], axis=1)
-		cost_g = (np.sum(cost_g_1) + np.sum(cost_g_2))/2
+		cost_g = (jnp.sum(cost_g_1) + jnp.sum(cost_g_2))/2
 
 		# Move end effectors to pick orientation
 		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_1[3:]/jnp.linalg.norm(target_1[3:])))
@@ -667,7 +668,7 @@ class cem_planner():
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_2 = 2 * jnp.arccos(dot_product)
 
-		cost_r_pick = (np.sum(cost_r_1) + np.sum(cost_r_2))/2
+		cost_r_pick = (jnp.sum(cost_r_1) + jnp.sum(cost_r_2))/2
 
 		''' Cost for moving '''
 
@@ -686,13 +687,13 @@ class cem_planner():
 		# Move end effectors to pick orientation
 		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, (target_1_rot/jnp.linalg.norm(target_1_rot, axis=1).reshape(1, self.num).T).T))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
-		cost_r_1 = 2 * jnp.arccos(dot_product)
+		cost_r_1 = (2 * jnp.arccos(dot_product))*jnp.identity(self.num)
 
 		dot_product = jnp.abs(jnp.dot(eef_2[:, 3:]/jnp.linalg.norm(eef_2[:, 3:], axis=1).reshape(1, self.num).T, (target_2_rot/jnp.linalg.norm(target_2_rot, axis=1).reshape(1, self.num).T).T))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
-		cost_r_2 = 2 * jnp.arccos(dot_product)
+		cost_r_2 = (2 * jnp.arccos(dot_product))*jnp.identity(self.num)
 
-		cost_r_move = (np.sum(cost_r_1) + np.sum(cost_r_2))/2
+		cost_r_move = (jnp.sum(cost_r_1) + jnp.sum(cost_r_2))/2
 
 		cost = (
 			cost_weights['collision']*cost_c +
@@ -701,19 +702,21 @@ class cem_planner():
 			cost_weights['velocity']*cost_eef_vel +
 
 			cost_weights['pick']*cost_weights['position']*cost_g +
-			cost_weights['pick']*cost_weights['orientation']*cost_r_pick +
+			cost_weights['orientation']*cost_r_pick +
 
 			cost_weights['move']*cost_weights['distance']*cost_dist +
 			cost_weights['move']*cost_weights['position']*cost_g_tray +
-			cost_weights['move']*cost_weights['orientation']*cost_r_tray +
-			cost_weights['move']*cost_weights['orientation']*cost_r_move
+			cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray 
+			# cost_weights['move']*cost_weights['orientation']*cost_r_move
 		)	
 
 		cost_list = jnp.array([
 			cost_c, 
 			cost_weights['move']*cost_weights['distance']*cost_dist, 
 			cost_weights['pick']*cost_weights['position']*cost_g+cost_weights['move']*cost_weights['position']*cost_g_tray , 
-			cost_weights['move']*cost_weights['orientation']*cost_r_move+cost_weights['pick']*cost_weights['orientation']*cost_r_pick+cost_weights['move']*cost_weights['orientation']*cost_r_tray
+			cost_weights['orientation_tray']*cost_r_tray
+
+			# cost_weights['move']*cost_weights['orientation']*cost_r_move+cost_weights['pick']*cost_weights['orientation']*cost_r_pick+cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray
 		])
 
 		return cost, cost_list

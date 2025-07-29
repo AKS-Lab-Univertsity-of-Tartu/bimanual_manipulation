@@ -40,12 +40,12 @@ def angle_between_lines_np(p1, p2, p3, p4):
 
     norm_v1 = np.linalg.norm(v1)
     norm_v2 = np.linalg.norm(v2)
-    epsilon = 0.1
+    epsilon = 0.01
 
 
-    if norm_v1 < epsilon or norm_v2 < epsilon:
-        # print("EXCEPTION 1", flush=True)
-        return 0
+    # if norm_v1 < epsilon or norm_v2 < epsilon:
+    #     # print("EXCEPTION 1", flush=True)
+    #     return 0
     
     u1 = v1 / norm_v1
     u2 = v2 / norm_v2
@@ -53,9 +53,9 @@ def angle_between_lines_np(p1, p2, p3, p4):
     # 2. Handle the edge cases
     dot_product = np.dot(u1, u2)
 
-    if np.abs(dot_product-1)<0.001:
-        # print("EXCEPTION 2", flush=True)
-        return 0
+    # if np.abs(dot_product-1)<0.001:
+    #     # print("EXCEPTION 2", flush=True)
+    #     return 0
 
     angle1 = np.arctan2(v1[1], v1[0])
     angle2 = np.arctan2(v2[1], v2[0])
@@ -75,16 +75,16 @@ def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_ini
     tray_rot = quaternion_multiply(tray_rot_init, rotation_quaternion(z_rot, [0, 0, 1]))
 
     # xz plane y-axis rotation
-    p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
-    p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
-    y_rot = angle_between_lines_np(p1, p2, p3, p4)
-    tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(y_rot, [0, 1, 0]))
+    # p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
+    # p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
+    # y_rot = angle_between_lines_np(p1, p2, p3, p4)
+    # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(y_rot, [0, 1, 0]))
 
-    # yz plane x-axis rotation
-    p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
-    p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
-    x_rot = angle_between_lines_np(p1, p2, p3, p4)
-    tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(x_rot, [1, 0, 0]))
+    # # yz plane x-axis rotation
+    # p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
+    # p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
+    # x_rot = angle_between_lines_np(p1, p2, p3, p4)
+    # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(x_rot, [1, 0, 0]))
 
     np.set_printoptions(precision=2, suppress=True)
     # print(f"XY-coords:  (({p1[0]:.2f}, {p1[1]:.2f}), ({p2[0]:.2f}, {p2[1]:.2f})), (({p3[0]:.2f}, {p3[1]:.2f}), ({p4[0]:.2f}, {p4[1]:.2f})) | XYZ-Axis rotation: {float(x_rot), float(y_rot), float(z_rot)}", flush=True)
