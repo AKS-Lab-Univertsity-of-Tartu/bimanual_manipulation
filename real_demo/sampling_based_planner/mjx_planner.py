@@ -643,7 +643,13 @@ class cem_planner():
 
 		# Keep end effectors at the same z-level and same velocity 
 		cost_eef_pos = jnp.linalg.norm(eef_1[:, 2] - eef_2[:, 2])
-		cost_eef_vel = jnp.linalg.norm(eef_vel_lin_1 - eef_vel_lin_2)	
+		# cost_eef_vel = jnp.linalg.norm(eef_vel_lin_1 - eef_vel_lin_2)	
+
+		rel_pos = eef_1[:,:3] - eef_2[:,:3]        # Shape (Batch, 3)
+		rel_vel = eef_vel_lin_1 - eef_vel_lin_2 # Shape (Batch, 3)
+
+		dot_products = jnp.sum(rel_pos * rel_vel, axis=-1)  # Shape (Batch,)
+		cost_eef_vel = jnp.linalg.norm(dot_products)
 
 		''' Cost for picking '''
 
