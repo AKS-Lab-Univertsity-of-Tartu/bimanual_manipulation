@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def quaternion_distance(q1, q2):
     dot_product = np.abs(np.dot(q1, q2))
     dot_product = np.clip(dot_product, -1.0, 1.0)
@@ -67,6 +68,8 @@ def angle_between_lines_np(p1, p2, p3, p4):
 
     return np.degrees(angle_rad) 
 
+
+
 def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_init):
     # xy plane z-axis rotation
     p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[1]), (eef_pos_2_init[0], eef_pos_2_init[1])
@@ -75,18 +78,18 @@ def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_ini
     tray_rot = quaternion_multiply(tray_rot_init, rotation_quaternion(z_rot, [0, 0, 1]))
 
     # xz plane y-axis rotation
-    # p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
-    # p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
-    # y_rot = angle_between_lines_np(p1, p2, p3, p4)
+    p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
+    p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
+    y_rot = angle_between_lines_np(p1, p2, p3, p4)
     # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(y_rot, [0, 1, 0]))
 
-    # # yz plane x-axis rotation
-    # p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
-    # p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
-    # x_rot = angle_between_lines_np(p1, p2, p3, p4)
+    # yz plane x-axis rotation
+    p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
+    p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
+    x_rot = angle_between_lines_np(p1, p2, p3, p4)
     # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(x_rot, [1, 0, 0]))
 
-    np.set_printoptions(precision=2, suppress=True)
+    # np.set_printoptions(precision=2, suppress=True)
     # print(f"XY-coords:  (({p1[0]:.2f}, {p1[1]:.2f}), ({p2[0]:.2f}, {p2[1]:.2f})), (({p3[0]:.2f}, {p3[1]:.2f}), ({p4[0]:.2f}, {p4[1]:.2f})) | XYZ-Axis rotation: {float(x_rot), float(y_rot), float(z_rot)}", flush=True)
 
     return tray_rot
@@ -94,16 +97,19 @@ def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_ini
 
 def main():
     # quat = np.array([0.70711, 0, -0.70711, 0])
-    quat0 = np.array([0, 0, 0, 1])#rotation_quaternion(90, [0, 0, 1])
-    print(quat0)
-    quat1 = rotation_quaternion(90, [0, 0, 1])#quaternion_multiply(rotation_quaternion(90, [1, 0, 0]), rotation_quaternion(90, [0, 1, 0]))
-    quat0 = quaternion_multiply(quat0, quat1)
-    print(quat0)
-    quat2 = rotation_quaternion(90, [0, 1, 0])
-    quat0 = quaternion_multiply(quat0, quat2)
+    quat0 = np.array([0, -0.70711, -0.70711, 0])#rotation_quaternion(90, [0, 0, 1])
+    quat1 = np.array([0, 0.70711, 0.70711, 0])
+    # print(quat0)
+    # quat1 = rotation_quaternion(-90, [0, 0, 1])#quaternion_multiply(rotation_quaternion(90, [1, 0, 0]), rotation_quaternion(90, [0, 1, 0]))
+    # quat0 = quaternion_multiply(quat0, quat1)
+    # print(quat0)
+
+    print(quaternion_distance(quat0, quat1))
+    # quat2 = rotation_quaternion(90, [0, 1, 0])
+    # quat0 = quaternion_multiply(quat0, quat2)
     
-    # quat3 = quaternion_multiply(quat0, quat1)
-    print(quat0)
+    # # quat3 = quaternion_multiply(quat0, quat1)
+    # print(quat0)
 
 if __name__=="__main__":
     main()

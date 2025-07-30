@@ -74,19 +74,23 @@ class run_cem_planner:
         # Get references for both arms
         self.target_pos_1 = data.xpos[model.body(name="target_0").id]
         # self.target_rot_1 = model.body(name="target_0").quat
-        self.target_rot_1 = data.xquat[model.body(name="target_0").id]
+        self.target_rot_1 = data.xquat[model.body(name="target_0").id].copy()
         self.target_1 = np.concatenate([self.target_pos_1, self.target_rot_1])
 
         self.target_pos_2 = data.xpos[model.body(name="target_1").id]
         # self.target_rot_2 = model.body(name="target_1").quat
-        self.target_rot_2 = data.xquat[model.body(name="target_1").id]
+        self.target_rot_2 = data.xquat[model.body(name="target_1").id].copy()
         self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
-        self.target_pos_3 = model.body(name="target_2").pos
-        self.target_rot_3 = data.xquat[model.body(name="target_2").id] #model.body(name="target_2").quat
+        # self.target_pos_3 = model.body(name="target_2").pos
+        # self.target_rot_3 = data.xquat[model.body(name="target_2").id] #model.body(name="target_2").quat
+        # self.target_3 = np.concatenate([self.target_pos_3, self.target_rot_3])
+
+        self.target_pos_3 = data.mocap_pos[model.body_mocapid[model.body(name='tray_mocap_target').id]]
+        self.target_rot_3 = data.mocap_quat[model.body_mocapid[model.body(name='tray_mocap_target').id]] #model.body(name="target_2").quat
         self.target_3 = np.concatenate([self.target_pos_3, self.target_rot_3])
 
-        print(self.target_1, self.target_2)
+        print(self.target_1, self.target_2, self.target_3)
 
         # Get obstacle reference
         self.obstacle_pos = data.mocap_pos[model.body_mocapid[model.body(name='obstacle').id]]
@@ -234,11 +238,12 @@ class run_cem_planner:
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]],
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
         ])
+        # print(tray_init)
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
-        primal_res, fixed_res, idx_min = self.cem.compute_cem(
+        primal_res, fixed_res, idx_min, best_target_1_rot, best_target_2_rot = self.cem.compute_cem(
             self.xi_mean,
             self.xi_cov,
             current_pos,
@@ -257,9 +262,15 @@ class run_cem_planner:
         # Get mean velocity command (average middle 80% of trajectory)
         # thetadot_cem = thetadot_horizon[1]
         thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
+        # thetadot_cem = np.mean(thetadot_horizon, axis=0)
 
         thetadot_1 = thetadot_cem[:6]
         thetadot_2 = thetadot_cem[6:]
+
+        print("BEST T1ROT:", best_target_1_rot, flush=True)
+        # print("THETADOT HORIZON:", thetadot_horizon, flush=True)
+        # print("TETADOT:", thetadot_cem, flush=True)
+
 
 
         if task == "pick":

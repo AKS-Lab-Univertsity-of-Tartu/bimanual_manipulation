@@ -133,6 +133,7 @@ class cem_planner():
 		self.mjx_data = mjx.put_data(self.model, self.data)
 		self.mjx_data = jax.jit(mjx.forward)(self.mjx_model, self.mjx_data)
 		self.jit_step = jax.jit(mjx.step)
+		self.jit_forward = jax.jit(mjx.step)
 
 		joint_names_pos = list()
 		joint_names_vel = list()
@@ -174,8 +175,8 @@ class cem_planner():
 
 		self.hande_id_2 = self.model.body(name="hande_2").id
 		self.tcp_id_2 = self.model.site(name="tcp_2").id
-		# self.tray_site_1_id = self.model.site(name="tray_site_1").id
-		# self.tray_site_2_id = self.model.site(name="tray_site_2").id
+		self.tray_site_1_id = self.model.site(name="tray_site_1").id
+		self.tray_site_2_id = self.model.site(name="tray_site_2").id
 		self.tray_1_id = self.model.body(name="target_0").id
 		self.tray_2_id = self.model.body(name="target_1").id
 
@@ -388,89 +389,91 @@ class cem_planner():
 
 		return primal_sol, primal_residuals, fixed_point_residuals
 
-	# def angle_between_lines_np(self, p1, p2, p3, p4): 
-	# 	""" 
-	# 	Calculates the angle between two lines using NumPy. 
+	@partial(jax.jit, static_argnums=(0,))
+	def angle_between_lines(self, p1, p2, p3, p4): 
+		""" 
+		Calculates the angle between two lines using NumPy. 
 
-	# 	Args: 
-	# 	p1, p2: Endpoints of the first line ((x1, y1), (x2, y2)). 
-	# 	p3, p4: Endpoints of the second line ((x3, y3), (x4, y4)). 
+		Args: 
+		p1, p2: Endpoints of the first line ((x1, y1), (x2, y2)). 
+		p3, p4: Endpoints of the second line ((x3, y3), (x4, y4)). 
 
-	# 	Returns: 
-	# 	The angle in degrees between the two lines. 
-	# 	""" 
-	# 	# Create vectors from the points 
-	# 	v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]]) 
-	# 	v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]]) 
+		Returns: 
+		The angle in degrees between the two lines. 
+		""" 
+		# Create vectors from the points 
+		v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]]) 
+		v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]]) 
 
-	# 	angle1 = jnp.arctan2(v1[1], v1[0])
-	# 	angle2 = jnp.arctan2(v2[1], v2[0])
 
-	# 	angle_rad = angle2 - angle1
+		angle1 = jnp.arctan2(v1[1], v1[0])
+		angle2 = jnp.arctan2(v2[1], v2[0])
 
-	# 	return jnp.degrees(angle_rad)
+		angle_rad = angle2 - angle1
+
+		return jnp.degrees(angle_rad)
 	# @partial(jax.jit, static_argnums=(0,))  
-	def angle_between_lines(self, p1, p2, p3, p4):
-		"""
-		Calculates the signed angle between two lines using JAX.
-		This version is JIT-compatible and uses jax.lax.cond for branching.
-		"""
-		# Create vectors from the points (p1->p2 and p3->p4)
-		v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]])
-		v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]])
+	# def angle_between_lines(self, p1, p2, p3, p4):
+	# 	"""
+	# 	Calculates the signed angle between two lines using JAX.
+	# 	This version is JIT-compatible and uses jax.lax.cond for branching.
+	# 	"""
+	# 	# Create vectors from the points (p1->p2 and p3->p4)
+	# 	v1 = jnp.array([p2[0] - p1[0], p2[1] - p1[1]])
+	# 	v2 = jnp.array([p4[0] - p3[0], p4[1] - p3[1]])
 
-		# --- Define the functions for our conditional logic ---
+	# 	# --- Define the functions for our conditional logic ---
 
-		def calculate_angle(operands):
-			"""The main logic path."""
-			v1_op, v2_op = operands
-			angle1 = jnp.arctan2(v1_op[1], v1_op[0])
-			angle2 = jnp.arctan2(v2_op[1], v2_op[0])
-			angle_rad = angle2 - angle1
-			return jnp.degrees(angle_rad)
+	# 	def calculate_angle(operands):
+	# 		"""The main logic path."""
+	# 		v1_op, v2_op = operands
+	# 		angle1 = jnp.arctan2(v1_op[1], v1_op[0])
+	# 		angle2 = jnp.arctan2(v2_op[1], v2_op[0])
+	# 		angle_rad = angle2 - angle1
+	# 		return jnp.degrees(angle_rad)
 
-		def return_zero(operands):
-			"""The exception path."""
-			# Must return the same shape and dtype as the other branch
-			return 0.0
+	# 	def return_zero(operands):
+	# 		"""The exception path."""
+	# 		# Must return the same shape and dtype as the other branch
+	# 		return 0.0
 
-		def check_parallel_and_calculate(operands):
-			"""Nested check for the dot product."""
-			v1_op, v2_op = operands
+	# 	def check_parallel_and_calculate(operands):
+	# 		"""Nested check for the dot product."""
+	# 		v1_op, v2_op = operands
 			
-			# Normalize vectors for the dot product check
-			norm_v1 = jnp.linalg.norm(v1_op)
-			norm_v2 = jnp.linalg.norm(v2_op)
-			u1 = v1_op / norm_v1
-			u2 = v2_op / norm_v2
+	# 		# Normalize vectors for the dot product check
+	# 		norm_v1 = jnp.linalg.norm(v1_op)
+	# 		norm_v2 = jnp.linalg.norm(v2_op)
+	# 		u1 = v1_op / norm_v1
+	# 		u2 = v2_op / norm_v2
 			
-			dot_product = jnp.dot(u1, u2)
+	# 		dot_product = jnp.dot(u1, u2)
 			
-			# Second condition: Are the vectors parallel?
-			is_parallel = jnp.abs(dot_product - 1.0) < 0.001
+	# 		# Second condition: Are the vectors parallel?
+	# 		is_parallel = jnp.abs(dot_product - 1.0) < 0.001
 			
-			return jax.lax.cond(
-				is_parallel,
-				return_zero,          # If parallel, return 0
-				calculate_angle,      # If not parallel, calculate the angle
-				operands
-			)
+	# 		return jax.lax.cond(
+	# 			is_parallel,
+	# 			return_zero,          # If parallel, return 0
+	# 			calculate_angle,      # If not parallel, calculate the angle
+	# 			operands
+	# 		)
 
-		# --- Execute the conditional logic ---
-		norm_v1 = jnp.linalg.norm(v1)
-		norm_v2 = jnp.linalg.norm(v2)
-		epsilon = 0.1
+	# 	# --- Execute the conditional logic ---
+	# 	norm_v1 = jnp.linalg.norm(v1)
+	# 	norm_v2 = jnp.linalg.norm(v2)
+	# 	epsilon = 0.1
 
-		# First condition: Are the vectors long enough?
-		is_too_short = (norm_v1 < epsilon) | (norm_v2 < epsilon)
+	# 	# First condition: Are the vectors long enough?
+	# 	is_too_short = (norm_v1 < epsilon) | (norm_v2 < epsilon)
 
-		# return jax.lax.cond(
-		# 	is_too_short,
-		# 	return_zero,                      # If too short, return 0
-		# 	check_parallel_and_calculate,     # If long enough, proceed to the next check
-		# 	(v1, v2)                          # The operands passed to the chosen function
-		# )
-		return calculate_angle((v1, v2) )
+	# 	return jax.lax.cond(
+	# 		is_too_short,
+	# 		return_zero,                      # If too short, return 0
+	# 		check_parallel_and_calculate,     # If long enough, proceed to the next check
+	# 		(v1, v2)                          # The operands passed to the chosen function
+	# 	)
+	# 	# return calculate_angle((v1, v2) )
 	
 	@partial(jax.jit, static_argnums=(0,))
 	def quaternion_distance(self, q1, q2):
@@ -529,7 +532,6 @@ class cem_planner():
 		# eef_pos_2_init = mjx_data.site_xpos[self.tcp_id_2]
 	
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(thetadot_single)
-		# qacc = mjx_data.qacc.at[self.joint_mask_vel].set(jnp.zeros(len(self.joint_mask_vel))+1)
 		mjx_data = mjx_data.replace(qvel=qvel)
 		
 		# Step the simulation
@@ -554,16 +556,19 @@ class cem_planner():
 		# Set tray position and orientation
 		tray_pos = (eef_pos_1+eef_pos_2)/2 - jnp.array([0, 0, 0.1])
 		tray_rot_init = mjx_data.mocap_quat[self.tray_mocap_idx]
-		tray_1_pos = mjx_data.xpos[self.tray_1_id]
-		tray_2_pos = mjx_data.xpos[self.tray_2_id]
+		# tray_1_pos = mjx_data.xpos[self.tray_1_id]
+		# tray_2_pos = mjx_data.xpos[self.tray_2_id]
+		tray_1_pos = mjx_data.site_xpos[self.tray_site_1_id]
+		tray_2_pos = mjx_data.site_xpos[self.tray_site_2_id]
 		tray_rot = self.turn_tray(tray_1_pos, tray_2_pos, eef_pos_1, eef_pos_2, tray_rot_init)
 
-		# Get quaternion in [x, y, z, w] format and convert to [w, x, y, z]
 		tray = jnp.concatenate([tray_pos, tray_rot])
 
 		mocap_pos = mjx_data.mocap_pos.at[self.tray_mocap_idx].set(tray_pos)
 		mocap_quat = mjx_data.mocap_quat.at[self.tray_mocap_idx].set(tray_rot)
 		mjx_data = mjx_data.replace(mocap_pos=mocap_pos, mocap_quat=mocap_quat)
+
+		mjx_data = self.jit_step(self.mjx_model, mjx_data)
 
 		target_1_rot = mjx_data.xquat[self.tray_1_id]
 		target_2_rot = mjx_data.xquat[self.tray_2_id]
@@ -702,19 +707,19 @@ class cem_planner():
 			cost_weights['velocity']*cost_eef_vel +
 
 			cost_weights['pick']*cost_weights['position']*cost_g +
-			cost_weights['orientation']*cost_r_pick +
+			cost_weights['pick']*cost_weights['orientation']*cost_r_pick +
 
 			cost_weights['move']*cost_weights['distance']*cost_dist +
 			cost_weights['move']*cost_weights['position']*cost_g_tray +
-			cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray 
-			# cost_weights['move']*cost_weights['orientation']*cost_r_move
+			cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray +
+			cost_weights['move']*cost_weights['orientation']*cost_r_move
 		)	
 
 		cost_list = jnp.array([
 			cost_c, 
 			cost_weights['move']*cost_weights['distance']*cost_dist, 
-			cost_weights['pick']*cost_weights['position']*cost_g+cost_weights['move']*cost_weights['position']*cost_g_tray , 
-			cost_weights['orientation_tray']*cost_r_tray
+			cost_weights['position']*cost_g+cost_weights['move']*cost_weights['position']*cost_g_tray , 
+			cost_weights['move']*cost_weights['orientation']*cost_r_move
 
 			# cost_weights['move']*cost_weights['orientation']*cost_r_move+cost_weights['pick']*cost_weights['orientation']*cost_r_pick+cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray
 		])
@@ -805,7 +810,7 @@ class cem_planner():
 		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_1, target_2, target_3, tray_init, cost_weights)
 
 		return carry, (cost_batch, cost_list_batch, thetadot, theta, 
-				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
+				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals, target_1_rot, target_2_rot)
 	
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_cem(
@@ -846,7 +851,7 @@ class cem_planner():
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)
-		cost_batch, cost_list_batch, thetadot, theta, avg_res_primal, avg_res_fixed, primal_residuals, fixed_point_residuals = out
+		cost_batch, cost_list_batch, thetadot, theta, avg_res_primal, avg_res_fixed, primal_residuals, fixed_point_residuals, target_1_rot, target_2_rot = out
 
 		idx_min = jnp.argmin(cost_batch[-1])
 		cost = jnp.min(cost_batch, axis=1)
@@ -857,6 +862,9 @@ class cem_planner():
 
 		xi_mean = carry[0]
 		xi_cov = carry[1]
+
+		best_target_1_rot = target_1_rot[-1][idx_min]
+		best_target_2_rot = target_2_rot[-1][idx_min]
 	    
 		return (
 			cost,
@@ -872,4 +880,6 @@ class cem_planner():
 			primal_residuals,
 			fixed_point_residuals,
 			idx_min,
+			best_target_1_rot,
+			best_target_2_rot
 		)

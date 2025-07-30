@@ -22,6 +22,7 @@ from rtde_control import RTDEControlInterface as RTDEControl
 from rtde_receive import RTDEReceiveInterface as RTDEReceive
 
 PACKAGE_DIR = get_package_share_directory('real_demo')
+np.set_printoptions(precision=4, suppress=True)
 
 class Planner(Node):
     def __init__(self):
@@ -154,13 +155,16 @@ class Planner(Node):
         self.model.opt.timestep = self.timestep
         # self.tray_idx = self.model.jnt_qposadr[self.model.body_jntadr[self.model.body(name="tray").id]]
 
-        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
-        target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
-        target_2_rot = quaternion_multiply(self.model.body(name="target_2").quat, rotation_quaternion(-90, [0, 0, 1]))
+        # target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
+        # target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
+        # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-90, [0, 0, 1]))
 
-        self.model.body(name='target_0').quat = target_0_rot
-        self.model.body(name='target_1').quat = target_1_rot
-        self.model.body(name='target_2').quat = target_2_rot
+        # self.model.body(name='target_0').quat = target_0_rot
+        # self.model.body(name='target_1').quat = target_1_rot
+        # # self.model.body(name='target_2').quat = target_2_rot
+        # self.model.body(name='target_00').quat = target_0_rot
+        # self.model.body(name='target_11').quat = target_1_rot
+        # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
 
         joint_names_pos = list()
         joint_names_vel = list()
@@ -176,13 +180,24 @@ class Planner(Node):
         
         
         robot_joints = np.array(['shoulder_pan_joint_1', 'shoulder_lift_joint_1', 'elbow_joint_1', 'wrist_1_joint_1', 'wrist_2_joint_1', 'wrist_3_joint_1',
-                        'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
+                                'shoulder_pan_joint_2', 'shoulder_lift_joint_2', 'elbow_joint_2', 'wrist_1_joint_2', 'wrist_2_joint_2', 'wrist_3_joint_2'])
         
         self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
         self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
 
         self.data = mujoco.MjData(self.model)
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+
+        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
+        target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
+        target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-90, [0, 0, 1]))
+
+        self.model.body(name='target_0').quat = target_0_rot
+        self.model.body(name='target_1').quat = target_1_rot
+        # self.model.body(name='target_2').quat = target_2_rot
+        self.model.body(name='target_00').quat = target_0_rot
+        self.model.body(name='target_11').quat = target_1_rot
+        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
 
 
 
@@ -205,6 +220,9 @@ class Planner(Node):
             table_2_pos = self.model.body(name='table_2').pos
 
         mujoco.mj_forward(self.model, self.data)
+
+        print("INIT QUATS TARG",self.data.xquat[self.model.body(name="target_00").id], self.data.xquat[self.model.body(name="target_11").id], flush=True)
+        print("INIT QUATS BOX",self.data.xquat[self.model.body(name="target_0").id], self.data.xquat[self.model.body(name="target_1").id], flush=True)
         
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
@@ -269,9 +287,10 @@ class Planner(Node):
             tray_rot = turn_quat(tray_1_pos, tray_2_pos, eef_pos_1, eef_pos_2, tray_rot_init)
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
 
-            self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_0").id], target_rot=self.data.xquat[self.model.body(name="target_0").id])
-            self.planner.update_targets(target_idx=2, target_pos=self.data.xpos[self.model.body(name="target_1").id], target_rot=self.data.xquat[self.model.body(name="target_1").id])
+            self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_00").id], target_rot=self.data.xquat[self.model.body(name="target_00").id])
+            self.planner.update_targets(target_idx=2, target_pos=self.data.xpos[self.model.body(name="target_11").id], target_rot=self.data.xquat[self.model.body(name="target_11").id])
 
+            # print("TARGET POS: ",eef_pos_1, self.data.xpos[self.model.body(name="target_00").id], flush=True)
             
             # print(tray_pos, tray_rot_init, tray_rot, flush=True)
 
@@ -293,7 +312,8 @@ class Planner(Node):
             current_vel = self.thetadot
         else:
             current_pos = self.data.qpos[self.joint_mask_pos]
-            current_vel = self.data.qvel[self.joint_mask_vel]
+            # current_vel = self.data.qvel[self.joint_mask_vel]
+            current_vel = self.thetadot
         
         
         # Compute control
@@ -328,6 +348,36 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
 
+            # if self.task=='move':
+            #     for i in thetadot_horizon:
+            #         self.thetadot = i
+            #         self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+            #         self.data.qvel[self.joint_mask_vel] = self.thetadot
+            #         mujoco.mj_step(self.model, self.data)
+            #         eef_pos_1 = self.data.site_xpos[self.planner.tcp_id_1]
+            #         eef_pos_2 = self.data.site_xpos[self.planner.tcp_id_2]
+
+            #         tray_pos = (eef_pos_1+eef_pos_2)/2 - np.array([0, 0, 0.1])
+            #         self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
+
+            #         tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+            #         # tray_site_1 = self.data.site_xpos[self.model.site(name="tray_site_1").id]
+            #         # tray_site_2 = self.data.site_xpos[self.model.site(name="tray_site_2").id]
+            #         tray_1_pos = self.data.xpos[self.model.body(name='target_0').id]
+            #         tray_2_pos = self.data.xpos[self.model.body(name='target_1').id]
+            #         tray_rot = turn_quat(tray_1_pos, tray_2_pos, eef_pos_1, eef_pos_2, tray_rot_init)
+            #         self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
+            #         print("TRAY ROT:", tray_rot)
+            #     # self.thetadot *= 5
+            #     # self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+            #     # self.data.qvel[self.joint_mask_vel] = self.thetadot
+            #     # mujoco.mj_step(self.model, self.data)
+            # else:
+            #     self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+            #     self.data.qvel[self.joint_mask_vel] = self.thetadot
+            #     mujoco.mj_step(self.model, self.data)
+
+
         current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_1[:3])
         current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], self.planner.target_1[3:])
             
@@ -344,6 +394,13 @@ class Planner(Node):
             self.task = 'move'
             self.gripper_control(gripper_idx=1, action='close')
             self.gripper_control(gripper_idx=2, action='close')
+
+        tray_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+
+        dot_product = np.abs(np.dot(tray_rot/np.linalg.norm(tray_rot), self.planner.target_3[3:]/np.linalg.norm(self.planner.target_3[3:])))
+        dot_product = np.clip(dot_product, -1.0, 1.0)
+        cost_r_tray = 2 * np.arccos(dot_product)
+        cost_r_tray = np.sum(cost_r_tray)
 
 
         # if self.task == 'pick':
@@ -367,6 +424,10 @@ class Planner(Node):
         self.viewer.sync()
 
         cost_c, cost_dist, cost_g, cost_r = cost_list
+        print("TRAY ROT:", cost_r_tray, flush=True)
+        print("INIT QUATS BOX",self.data.xquat[self.model.body(name="target_0").id], self.data.xquat[self.model.body(name="target_1").id], flush=True)
+
+        print("EEF!ROT:", self.data.xquat[self.planner.hande_id_1], flush=True)
         
         # Print debug info
         print(f'Task: {self.task} | '
@@ -379,9 +440,9 @@ class Planner(Node):
               f'Cost gr2: {"%.2f, %.2f"%(float(current_cost_g_2), float(current_cost_r_2))} | '
               f'Cost: {np.round(cost, 2)}', flush=True)
         
-        # time_until_next_step = self.model.opt.timestep - (time.time() - start_time)
-        # if time_until_next_step > 0:
-        #     time.sleep(time_until_next_step) 
+        time_until_next_step = self.model.opt.timestep - (time.time() - start_time)
+        if time_until_next_step > 0:
+            time.sleep(time_until_next_step) 
         
         # print(self.data.qpos[self.tray_idx+3:self.tray_idx+7], self.model.body(name="target_2").quat)
         
