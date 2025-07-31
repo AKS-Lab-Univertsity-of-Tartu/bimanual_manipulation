@@ -206,7 +206,7 @@ class Visualizer(Node):
 
         theta = self.data_files['trajectory']['theta'][self.step_idx]
         thetadot = self.data_files['trajectory']['thetadot'][self.step_idx]
-        thetadot_horizon = self.data_files['trajectory']['thetadot_planned'][self.step_idx]
+        theta_horizon = self.data_files['trajectory']['theta_planned'][self.step_idx]
 
         target_0 = self.data_files['trajectory']['target_0'][self.step_idx]
         target_1 = self.data_files['trajectory']['target_1'][self.step_idx]
@@ -241,8 +241,6 @@ class Visualizer(Node):
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_quat
             mujoco.mj_step(self.model, self.data)
             self.viewer.sync()
-
-            
 
         time_until_next_step = self.model.opt.timestep - (time.time() - step_start)
         if time_until_next_step > 0:
