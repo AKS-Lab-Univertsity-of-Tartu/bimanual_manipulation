@@ -13,7 +13,7 @@ import mujoco
 from mujoco import viewer
 import numpy as np
 
-from sampling_based_planner.quat_math import quaternion_distance, quaternion_multiply, rotation_quaternion, angle_between_lines_np, turn_quat
+from sampling_based_planner.quat_math import *
 
 from rtde_control import RTDEControlInterface as RTDEControl
 from rtde_receive import RTDEReceiveInterface as RTDEReceive
@@ -47,20 +47,33 @@ class Visualizer(Node):
         model_path = os.path.join(PACKAGE_DIR, 'ur5e_hande_mjx', 'scene.xml')
 
         self.pathes = {
-            "setup": os.path.join(PACKAGE_DIR, 'data', self.folder, 'setup', f'setup_{self.idx}.csv'),
-            "trajectory": os.path.join(PACKAGE_DIR, 'data', self.folder, 'trajectory', f'trajectory_{self.idx}.csv'),
-        }
+                "setup": os.path.join(PACKAGE_DIR, 'data', self.folder, 'setup', f'setup_{self.idx}.npz'),
+                "trajectory": os.path.join(PACKAGE_DIR, 'data', self.folder, 'trajectory', f'traj_{self.idx}.npz'),
+            }
+        
+        self.data_saved = False
+
         if self.record_data_:
-            self.data_files = dict()
-            self.data_files['setup'] = csv.DictWriter(open(self.pathes['setup'], "w+"), fieldnames=['table_1', 'marker_1', 'table_2', 'marker_2'])
-            self.data_files['trajectory'] = csv.DictWriter(open(self.pathes['trajectory'], "w+"), fieldnames=['timestamp', 'theta', 'thetadot', 'target_1', 'target_2'])
-            self.data_files['setup'].writeheader()
-            self.data_files['trajectory'].writeheader()
+
+            # Store data in lists during runtime
+            self.data_buffers = {
+                'setup': [],
+                'theta': [],
+                'thetadot': [],
+                'theta_planned': [],
+                'thetadot_planned': [],
+                'target_1': [],
+                'target_2': [],
+                'theta_planned_batched': [],
+                'thetadot_planned_batched': [],
+                'cost_cgr_batched': [],
+                'timestamp': [],
+            }
 
         elif self.playback:
             self.data_files = dict()
             for key, value in self.pathes.items():
-                self.data_files[key] = list(csv.DictReader(open(value, "r")))
+                self.data_files[key] = np.load(self.pathes[key], allow_pickle=True)
 
 
         self.model = mujoco.MjModel.from_xml_path(model_path)
@@ -105,81 +118,59 @@ class Visualizer(Node):
         if not self.playback:
 
             if self.use_hardware:
-                self.rtde_c_1 = RTDEControl("192.168.0.120")
-                self.rtde_r_1 = RTDEReceive("192.168.0.120")
+                self.rtde_c_0 = RTDEControl("192.168.0.120")
+                self.rtde_r_0 = RTDEReceive("192.168.0.120")
 
-                self.rtde_c_2 = RTDEControl("192.168.0.124")
-                self.rtde_r_2 = RTDEReceive("192.168.0.124")
+                self.rtde_c_1 = RTDEControl("192.168.0.124")
+                self.rtde_r_1 = RTDEReceive("192.168.0.124")
                 self.move_to_start()
 
             qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
-            self.subscription_table1 = self.create_subscription(
-                PoseStamped,
-                '/vrpn_mocap/table1/pose',
-                self.table1_callback,
-                qos_profile 
-            )
-
-            self.subscription_table2 = self.create_subscription(
-                PoseStamped,
-                '/vrpn_mocap/table2/pose',
-                self.table2_callback,
-                qos_profile 
-            )
-
-            self.subscription_object1 = self.create_subscription(
-                PoseStamped,
-                '/vrpn_mocap/object1/pose',
-                self.object1_callback,
-                qos_profile 
-            )
-
-            self.subscription_object2 = self.create_subscription(
-                PoseStamped,
-                '/vrpn_mocap/object2/pose',
-                self.object2_callback,
-                qos_profile 
-            )
+            self.subscription_table1 = self.create_subscription(PoseStamped,'/vrpn_mocap/table1/pose',self.table0_callback,qos_profile )
+            self.subscription_table2 = self.create_subscription(PoseStamped,'/vrpn_mocap/table2/pose',self.table1_callback,qos_profile )
+            self.subscription_object1 = self.create_subscription(PoseStamped,'/vrpn_mocap/object1/pose',self.object0_callback,qos_profile )
+            self.subscription_object2 = self.create_subscription(PoseStamped,'/vrpn_mocap/object2/pose',self.object1_callback,qos_profile )
 
             self.timer = self.create_timer(self.model.opt.timestep, self.view_model)
         else:
-            self.setup = self.data_files['setup'][-1]
+            self.tcp_id_0 = self.model.site(name="tcp_0").id
+            self.hande_id_0 = self.model.body(name="hande_0").id
+            self.tcp_id_1 = self.model.site(name="tcp_1").id
+            self.hande_id_1 = self.model.body(name="hande_1").id
 
-            self.model.body(name='table_1').pos = json.loads(self.setup['table_1'])
-            self.model.body(name='table1_marker').pos = json.loads(self.setup['marker_1'])
-            self.model.body(name='table_2').pos = json.loads(self.setup['table_2'])
-            self.model.body(name='table2_marker').pos = json.loads(self.setup['marker_2'])
+            self.model.body(name='table_0').pos = self.data_files['setup']['setup'][0][0]
+            self.model.body(name='table0_marker').pos = self.data_files['setup']['setup'][0][1]
+            self.model.body(name='table_1').pos = self.data_files['setup']['setup'][0][2]
+            self.model.body(name='table1_marker').pos = self.data_files['setup']['setup'][0][3]
 
-            self.viewer.cam.lookat[:] = self.model.body(name='table_1').pos
+            self.viewer.cam.lookat[:] = self.model.body(name='table_0').pos
 
-            self.tcp_id_1 = self.model.site(name="tcp").id
-            self.hande_id_1 = self.model.body(name="hande").id
-            self.tcp_id_2 = self.model.site(name="tcp_2").id
-            self.hande_id_2 = self.model.body(name="hande_2").id
+            self.labels = ['theta', 'thetadot', 'theta_planned', 'thetadot_planned', 'target_0', 'target_1', 'theta_planned_batched', 'thetadot_planned_batched', 'cost_cgr_batched', 'timestamp']
 
-            self.eef_pos_1_init = self.data.site_xpos[self.tcp_id_1].copy()
-            self.eef_pos_2_init = self.data.site_xpos[self.tcp_id_2].copy()
+            for i in self.labels:
+                print(f'{i}: {self.data_files['trajectory'][i].shape}', flush=True)
 
+            self.data.qpos[self.joint_mask_pos] = self.data_files['trajectory']['theta'][10]
 
             self.step_idx = 0
             self.timer = self.create_timer(self.model.opt.timestep, self.view_playback)
 
     def move_to_start(self):
         """Move robot to initial joint position"""
-        # self.rtde_c_1.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
-        # self.rtde_c_2.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
+        # self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        # self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         print("Moved to initial pose.")
 
     def view_model(self):
         step_start = time.time()
 
         if self.use_hardware:
-            theta_1 = self.rtde_r_1.getActualQ()
-            theta_2 = self.rtde_r_2.getActualQ()
+            theta_1 = self.rtde_r_0.getActualQ()
+            theta_2 = self.rtde_r_1.getActualQ()
             theta = np.concatenate((theta_1, theta_2), axis=None)
 
-            thetadot_1 = self.rtde_r_1.getActualQd()
-            thetadot_2 = self.rtde_r_2.getActualQd()
+            thetadot_1 = self.rtde_r_0.getActualQd()
+            thetadot_2 = self.rtde_r_1.getActualQd()
             thetadot = np.concatenate((thetadot_1, thetadot_2), axis=None)
         else:
             theta = self.data.qpos[self.joint_mask_pos]
@@ -190,8 +181,21 @@ class Visualizer(Node):
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
 
-        if self.record_data_:
-            self.record_data(theta=theta, thetadot=thetadot)
+        target_0 = np.concatenate([
+            self.model.body(name='target_0').pos,
+            self.model.body(name='target_0').quat
+        ])
+        target_1 = np.concatenate([
+            self.model.body(name='target_1').pos,
+            self.model.body(name='target_1').quat
+        ])
+
+        if self.record_data_:    
+            self.data_buffers['theta'].append(theta.copy())
+            self.data_buffers['thetadot'].append(thetadot.copy())
+            self.data_buffers['target_0'].append(target_0.copy())
+            self.data_buffers['target_1'].append(target_1.copy())
+            self.data_buffers['timestamp'].append(time.time())
 
         time_until_next_step = self.model.opt.timestep - (time.time() - step_start)
         if time_until_next_step > 0:
@@ -200,70 +204,36 @@ class Visualizer(Node):
     def view_playback(self):
         step_start = time.time()
 
-        if self.folder=="manual":
-            theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
-            self.data.qpos[self.joint_mask_pos] = theta
-        elif self.folder=="planner":
-            theta = json.loads(self.data_files['trajectory'][self.step_idx]['theta'])
-            # self.data.qvel[:self.num_dof] = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
-            # print(thetadot, flush=True)
-            self.data.qpos[self.joint_mask_pos] = theta
+        theta = self.data_files['trajectory']['theta'][self.step_idx]
+        thetadot = self.data_files['trajectory']['thetadot'][self.step_idx]
+        thetadot_horizon = self.data_files['trajectory']['thetadot_planned'][self.step_idx]
 
-        theta_horizon = json.loads(self.data_files['trajectory'][self.step_idx]['theta_horizon'])
+        target_0 = self.data_files['trajectory']['target_0'][self.step_idx]
+        target_1 = self.data_files['trajectory']['target_1'][self.step_idx]
 
-        target =  quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-90, [0, 0, 1]))
-
-        # for theta in theta_horizon:
-        #     self.data.qpos[self.joint_mask_pos] = theta
-
-        #     mujoco.mj_step(self.model, self.data)
-        #     self.viewer.sync()
-
-        #     eef_pos_1 = self.data.site_xpos[self.tcp_id_1]
-        #     eef_pos_2 = self.data.site_xpos[self.tcp_id_2]
-
-        #     tray_pos = (eef_pos_1+eef_pos_2)/2 - np.array([0, 0, 0.1])
-        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
-
-        #     tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-
-        #     tray_1_pos = self.data.xpos[self.model.body(name='target_0').id]
-        #     tray_2_pos = self.data.xpos[self.model.body(name='target_1').id]
-        #     tray_rot = turn_quat(tray_1_pos, tray_2_pos, eef_pos_1, eef_pos_2, tray_rot_init)
-
-        #     self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
-
-        #     dot_product = np.abs(np.dot(tray_rot/np.linalg.norm(tray_rot), target/np.linalg.norm(target)))
-        #     dot_product = np.clip(dot_product, -1.0, 1.0)
-        #     cost_r_tray = 2 * np.arccos(dot_product)
-        #     cost_r_tray = np.sum(cost_r_tray)
-
-        #     print(cost_r_tray, tray_rot, target, flush=True)
+        self.data.qpos[self.joint_mask_pos] = theta
 
         if self.step_idx >= 40:
+            eef_pos_0 = self.data.site_xpos[self.tcp_id_0]
             eef_pos_1 = self.data.site_xpos[self.tcp_id_1]
-            eef_pos_2 = self.data.site_xpos[self.tcp_id_2]
 
-            tray_pos = (eef_pos_1+eef_pos_2)/2 - np.array([0, 0, 0.1])
+            tray_pos = (eef_pos_0+eef_pos_1)/2 - np.array([0, 0, 0.1])
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
             tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
 
-            tray_1_pos = self.data.xpos[self.model.body(name='target_0').id]
-            tray_2_pos = self.data.xpos[self.model.body(name='target_1').id]
-            tray_rot = turn_quat(tray_1_pos, tray_2_pos, eef_pos_1, eef_pos_2, tray_rot_init)
+            tray_0_pos = self.data.xpos[self.model.body(name='target_0').id]
+            tray_1_pos = self.data.xpos[self.model.body(name='target_1').id]
+            tray_rot = turn_quat(tray_0_pos, tray_1_pos, eef_pos_0, eef_pos_1, tray_rot_init)
 
             self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
-
-        # print(self.step_idx, flush=True)
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
 
-        if self.step_idx < len(self.data_files['trajectory'])-1:
+        if self.step_idx < len(self.data_files['trajectory']['theta'])-1:
             self.step_idx += 1
         else:
-            # print("restart", flush=True)
             self.step_idx = 0
             self.data.qpos[self.joint_mask_pos] = self.init_joint_position
             self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
@@ -278,63 +248,62 @@ class Visualizer(Node):
         if time_until_next_step > 0:
             time.sleep(time_until_next_step) 
 
+    def table0_callback(self, msg):
+        marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
+        marker_diff = marker_pose-self.model.body(name='table0_marker').pos
+        table0_pose = self.model.body(name='table_0').pos + marker_diff
+        self.model.body(name='table_0').pos = table0_pose
+        self.model.body(name='table0_marker').pos = marker_pose
+        self.viewer.cam.lookat[:] = self.model.body(name='table_0').pos
+
     def table1_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
         marker_diff = marker_pose-self.model.body(name='table1_marker').pos
         table1_pose = self.model.body(name='table_1').pos + marker_diff
         self.model.body(name='table_1').pos = table1_pose
         self.model.body(name='table1_marker').pos = marker_pose
-        self.viewer.cam.lookat[:] = self.model.body(name='table_1').pos
 
-    def table2_callback(self, msg):
-        marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
-        marker_diff = marker_pose-self.model.body(name='table2_marker').pos
-        table2_pose = self.model.body(name='table_2').pos + marker_diff
-        self.model.body(name='table_2').pos = table2_pose
-        self.model.body(name='table2_marker').pos = marker_pose
-
-    def object1_callback(self, msg):
-        # marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
-        # self.model.body(name='target_0').pos = marker_pose
+    def object0_callback(self, msg):
         pose = msg.pose
         tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.07])
         self.model.body(name='tray').pos = tray_pos
         self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
-    def object2_callback(self, msg):
+    def object1_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
         self.model.body(name='target_1').pos = marker_pose
 
     def close_connection(self):
         if self.playback==False and self.use_hardware==True:
+            self.rtde_c_0.speedStop()
+            self.rtde_c_0.disconnect()
             self.rtde_c_1.speedStop()
             self.rtde_c_1.disconnect()
-            self.rtde_c_2.speedStop()
-            self.rtde_c_2.disconnect()
             print("Disconnected from UR5 Robot")
 
-    def record_data(self, theta, thetadot):
-        timestamp = time.time()
-
-        setup = {
-            "table_1": str(self.model.body(name='table_1').pos.tolist()),
-            "marker_1": str(self.model.body(name='table1_marker').pos.tolist()),
-            "table_2": str(self.model.body(name='table_2').pos.tolist()),
-            "marker_2": str(self.model.body(name='table2_marker').pos.tolist()),
-        }
-        self.data_files['setup'].writerow(setup)
-
-        target_1 = np.concatenate((self.model.body(name='target_0').pos.tolist(), self.model.body(name='target_0').quat.tolist()), axis=None)
-        target_2 = np.concatenate((self.model.body(name='target_1').pos.tolist(), self.model.body(name='target_1').quat.tolist()), axis=None)
-
-        step = {
-            "timestamp" : timestamp,
-            "theta": str(theta.tolist()),
-            "thetadot": str(thetadot.tolist()),
-            "target_1": str(target_1.tolist()),
-            "target_2": str(target_2.tolist())
-        }
-        self.data_files['trajectory'].writerow(step)
+    def record_data(self):
+        """Save data to npy file"""
+        self.data_buffers['setup'].append([self.model.body(name='table_0').pos, self.model.body(name='table0_marker').pos, 
+                                           self.model.body(name='table_1').pos, self.model.body(name='table1_marker').pos])
+        np.savez(
+            self.pathes['setup'],
+            setup=self.data_buffers['setup'],
+        )
+        np.savez(
+            self.pathes['trajectory'],
+            theta=np.array(self.data_buffers['theta']),
+            thetadot=np.array(self.data_buffers['thetadot']),
+            theta_planned=np.array(self.data_buffers['theta_planned']),
+            thetadot_planned=np.array(self.data_buffers['thetadot_planned']),
+            target_0=np.array(self.data_buffers['target_0']),
+            target_1=np.array(self.data_buffers['target_1']),
+            theta_planned_batched=np.array(self.data_buffers['theta_planned_batched']),
+            thetadot_planned_batched=np.array(self.data_buffers['thetadot_planned_batched']),
+            cost_cgr_batched=np.array(self.data_buffers['cost_cgr_batched']),
+            timestamp=np.array(self.data_buffers['timestamp']),
+        )
+        self.data_saved = True
+        print("Saving data...")
 
 
 
@@ -349,6 +318,8 @@ def main(args=None):
     except KeyboardInterrupt:
         print("Node interrupted with Ctrl+C")
     finally:
+        if visualizer.record_data_:
+            visualizer.record_data()
         visualizer.close_connection()
         visualizer.destroy_node()
         rclpy.shutdown()

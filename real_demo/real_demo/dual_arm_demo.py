@@ -65,8 +65,8 @@ class Planner(Node):
 
         if self.record_data_:
             self.pathes = {
-                "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_reach_target_{self.idx}.npz'),
-                "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'traj_reach_target_{self.idx}.npz'),
+                "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{self.idx}.npz'),
+                "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'traj_{self.idx}.npz'),
             }
 
             # Store data in lists during runtime
