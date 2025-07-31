@@ -3,12 +3,11 @@ import jax.numpy as jnp
 
 def quat_to_rotmat(quat):
     """
-    Convert a quaternion (w, x, y, z) to a 3x3 rotation matrix using JAX.
+    Convert a quaternion (w, x, y, z) to a 1x9 rotation matrix.
     Assumes the quaternion is normalized.
     """
     w, x, y, z = quat
 
-    # Precompute repeated terms for efficiency
     ww = w * w
     xx = x * x
     yy = y * y
@@ -33,7 +32,7 @@ def quat_to_rotmat(quat):
 
 def rotmat_to_quat(mat):
     """
-    Convert a 3x3 rotation matrix to a quaternion (w, x, y, z) using JAX.
+    Convert a 3x3 rotation matrix to a quaternion (w, x, y, z).
     Assumes the matrix is a valid rotation matrix.
     """
     m = mat.reshape((3, 3))
@@ -84,6 +83,17 @@ def quaternion_distance(q1, q2):
     return 2 * np.arccos(dot_product)
 
 def rotation_quaternion(angle_deg, axis):
+    """ 
+    Creates rotation quaternion. 
+
+    Args: 
+    angle_deg: Degrees to turn. 
+    axis: Along which axis to turn (one at a time) [x, y, z]. 
+
+    Returns: 
+    Rotation quaternion [w, x, y, z]. 
+    """ 
+
     axis = axis / np.linalg.norm(axis)
     angle_rad = np.deg2rad(angle_deg)
     w = np.cos(angle_rad / 2)
@@ -101,7 +111,7 @@ def quaternion_multiply(q1, q2):
     
     return np.array([round(w, 5), round(x, 5), round(y, 5), round(z, 5)])
 
-def angle_between_lines_np(p1, p2, p3, p4): 
+def angle_between_lines(p1, p2, p3, p4): 
     """ 
     Calculates the angle between two lines using NumPy. 
 
@@ -151,19 +161,19 @@ def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_ini
     # xy plane z-axis rotation
     p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[1]), (eef_pos_2_init[0], eef_pos_2_init[1])
     p3, p4 = (eef_pos_1[0], eef_pos_1[1]), (eef_pos_2[0], eef_pos_2[1])
-    z_rot = angle_between_lines_np(p1, p2, p3, p4)
+    z_rot = angle_between_lines(p1, p2, p3, p4)
     tray_rot = quaternion_multiply(tray_rot_init, rotation_quaternion(z_rot, [0, 0, 1]))
 
     # # xz plane y-axis rotation
     # p1, p2 = (eef_pos_1_init[0], eef_pos_1_init[2]), (eef_pos_2_init[0], eef_pos_2_init[2])
     # p3, p4 = (eef_pos_1[0], eef_pos_1[2]), (eef_pos_2[0], eef_pos_2[2])
-    # y_rot = angle_between_lines_np(p1, p2, p3, p4)
+    # y_rot = angle_between_lines(p1, p2, p3, p4)
     # # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(y_rot, [0, 1, 0]))
 
     # # yz plane x-axis rotation
     # p1, p2 = (eef_pos_1_init[1], eef_pos_1_init[2]), (eef_pos_2_init[1], eef_pos_2_init[2])
     # p3, p4 = (eef_pos_1[1], eef_pos_1[2]), (eef_pos_2[1], eef_pos_2[2])
-    # x_rot = angle_between_lines_np(p1, p2, p3, p4)
+    # x_rot = angle_between_lines(p1, p2, p3, p4)
     # # tray_rot = quaternion_multiply(tray_rot, rotation_quaternion(x_rot, [1, 0, 0]))
 
     # np.set_printoptions(precision=2, suppress=True)
@@ -173,33 +183,20 @@ def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_ini
 
 
 def main():
-    # # quat = np.array([0.70711, 0, -0.70711, 0])
-    # quat0 = np.array([0, -0.70711, -0.70711, 0])#rotation_quaternion(90, [0, 0, 1])
-    # quat1 = np.array([0, 0.70711, 0.70711, 0])
-    # # print(quat0)
-    # # quat1 = rotation_quaternion(-90, [0, 0, 1])#quaternion_multiply(rotation_quaternion(90, [1, 0, 0]), rotation_quaternion(90, [0, 1, 0]))
-    # # quat0 = quaternion_multiply(quat0, quat1)
-    # # print(quat0)
-
-    # print(quaternion_distance(quat0, quat1))
-    # # quat2 = rotation_quaternion(90, [0, 1, 0])
-    # # quat0 = quaternion_multiply(quat0, quat2)
-    
-    # # # quat3 = quaternion_multiply(quat0, quat1)
-    # # print(quat0)
 
     quat0 = np.array([1, 0, 0, 0])
-    quat0 = quaternion_multiply(quaternion_multiply(quat0, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
-
-
-    mat0 = quat_to_rotmat(quat0)
-
-    quat1 = rotmat_to_quat(mat0)
+    quat1 = quaternion_multiply(quat0, rotation_quaternion(-180, [0, 1, 0])) # rotate wuaternion -180 degrees along y-axis
+    quat2 = quaternion_multiply(quat1, rotation_quaternion(-90, [0, 0, 1])) # rotate wuaternion -90 degrees along z-axis
+    mat0 = quat_to_rotmat(quat2) # convert quaternion to rotation matrix
+    quat3 = rotmat_to_quat(mat0) # convert rotation matrix back to quaternion
 
     print(quat0)
-    print(mat0.reshape((3,3)))
-
     print(quat1)
+    print(quat2)
+    print(mat0)
+    print(quat3)
+
+
 
 if __name__=="__main__":
     main()
