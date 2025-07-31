@@ -412,6 +412,55 @@ class cem_planner():
 		angle_rad = angle2 - angle1
 
 		return jnp.degrees(angle_rad)
+	
+	@partial(jax.jit, static_argnums=(0,))
+	def rotmat_to_quat(self, mat):
+		"""
+		Convert a 3x3 rotation matrix to a quaternion (w, x, y, z) using JAX.
+		Assumes the matrix is a valid rotation matrix.
+		"""
+		m = mat.reshape((3, 3))
+		tr = m[0, 0] + m[1, 1] + m[2, 2]
+
+		def case_tr_pos(_):
+			S = jnp.sqrt(tr + 1.0) * 2  # S=4*w
+			w = 0.25 * S
+			x = (m[2, 1] - m[1, 2]) / S
+			y = (m[0, 2] - m[2, 0]) / S
+			z = (m[1, 0] - m[0, 1]) / S
+			return jnp.array([w, x, y, z])
+
+		def case_m00_max(_):
+			S = jnp.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2]) * 2  # S=4*x
+			w = (m[2, 1] - m[1, 2]) / S
+			x = 0.25 * S
+			y = (m[0, 1] + m[1, 0]) / S
+			z = (m[0, 2] + m[2, 0]) / S
+			return jnp.array([w, x, y, z])
+
+		def case_m11_max(_):
+			S = jnp.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2]) * 2  # S=4*y
+			w = (m[0, 2] - m[2, 0]) / S
+			x = (m[0, 1] + m[1, 0]) / S
+			y = 0.25 * S
+			z = (m[1, 2] + m[2, 1]) / S
+			return jnp.array([w, x, y, z])
+
+		def case_m22_max(_):
+			S = jnp.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1]) * 2  # S=4*z
+			w = (m[1, 0] - m[0, 1]) / S
+			x = (m[0, 2] + m[2, 0]) / S
+			y = (m[1, 2] + m[2, 1]) / S
+			z = 0.25 * S
+			return jnp.array([w, x, y, z])
+
+		quat = jnp.where(tr > 0, case_tr_pos(0),
+				jnp.where((m[0, 0] > m[1, 1]) & (m[0, 0] > m[2, 2]), case_m00_max(0),
+				jnp.where(m[1, 1] > m[2, 2], case_m11_max(0), case_m22_max(0))
+			))
+
+		return quat
+	
 	# @partial(jax.jit, static_argnums=(0,))  
 	# def angle_between_lines(self, p1, p2, p3, p4):
 	# 	"""
@@ -473,7 +522,6 @@ class cem_planner():
 	# 		check_parallel_and_calculate,     # If long enough, proceed to the next check
 	# 		(v1, v2)                          # The operands passed to the chosen function
 	# 	)
-	# 	# return calculate_angle((v1, v2) )
 	
 	@partial(jax.jit, static_argnums=(0,))
 	def quaternion_distance(self, q1, q2):
@@ -568,10 +616,10 @@ class cem_planner():
 		mocap_quat = mjx_data.mocap_quat.at[self.tray_mocap_idx].set(tray_rot)
 		mjx_data = mjx_data.replace(mocap_pos=mocap_pos, mocap_quat=mocap_quat)
 
-		mjx_data = self.jit_step(self.mjx_model, mjx_data)
+		# mjx_data = self.jit_step(self.mjx_model, mjx_data)
 
-		target_1_rot = mjx_data.xquat[self.tray_1_id]
-		target_2_rot = mjx_data.xquat[self.tray_2_id]
+		target_1_rot = self.rotmat_to_quat(mjx_data.site_xmat[self.tray_site_1_id])
+		target_2_rot = self.rotmat_to_quat(mjx_data.site_xmat[self.tray_site_2_id])
 
 		# Compute Jacobians using the current MJX API
 		def get_site_pos(qpos):
@@ -707,19 +755,19 @@ class cem_planner():
 			cost_weights['velocity']*cost_eef_vel +
 
 			cost_weights['pick']*cost_weights['position']*cost_g +
-			cost_weights['pick']*cost_weights['orientation']*cost_r_pick +
+			cost_weights['pick']*cost_weights['orientation_pick']*cost_r_pick +
 
 			cost_weights['move']*cost_weights['distance']*cost_dist +
 			cost_weights['move']*cost_weights['position']*cost_g_tray +
 			cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray +
-			cost_weights['move']*cost_weights['orientation']*cost_r_move
+			cost_weights['move']*cost_weights['orientation_move']*cost_r_move
 		)	
 
 		cost_list = jnp.array([
 			cost_c, 
-			cost_weights['move']*cost_weights['distance']*cost_dist, 
-			cost_weights['position']*cost_g+cost_weights['move']*cost_weights['position']*cost_g_tray , 
-			cost_weights['move']*cost_weights['orientation']*cost_r_move
+			cost_weights['move']*cost_weights['orientation_move']*cost_r_move+cost_weights['move']*cost_weights['distance']*cost_dist,
+			cost_weights['pick']*cost_weights['position']*cost_g+cost_weights['move']*cost_weights['position']*cost_g_tray , 
+			cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray
 
 			# cost_weights['move']*cost_weights['orientation']*cost_r_move+cost_weights['pick']*cost_weights['orientation']*cost_r_pick+cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray
 		])

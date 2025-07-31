@@ -233,6 +233,7 @@ class run_cem_planner:
         elif task == 'move':
             self.cost_weights['pick'] = 0
             self.cost_weights['move'] = 1
+            # self.cost_weights['orientation'] = 10
 
         tray_init = np.concatenate([
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]],
@@ -267,7 +268,7 @@ class run_cem_planner:
         thetadot_1 = thetadot_cem[:6]
         thetadot_2 = thetadot_cem[6:]
 
-        print("BEST T1ROT:", best_target_1_rot, flush=True)
+        # print("BEST T1ROT:", best_target_1_rot, flush=True)
         # print("THETADOT HORIZON:", thetadot_horizon, flush=True)
         # print("TETADOT:", thetadot_cem, flush=True)
 

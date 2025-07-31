@@ -15,7 +15,7 @@ import mujoco
 from mujoco import viewer
 
 from sampling_based_planner.mpc_planner import run_cem_planner
-from sampling_based_planner.quat_math import quaternion_distance, quaternion_multiply, rotation_quaternion, angle_between_lines_np, turn_quat
+from sampling_based_planner.quat_math import quaternion_distance, quaternion_multiply, rotation_quaternion, angle_between_lines_np, turn_quat, quat_to_rotmat
 
 
 from rtde_control import RTDEControlInterface as RTDEControl
@@ -70,16 +70,17 @@ class Planner(Node):
         self.task = 'pick'
 
         cost_weights = {
-            'collision': w_col,
+            'collision': 500,
 			'theta': 0.3,
 			'z-axis': 5.0,
             'velocity': 0.1,
 
-            'position': w_pos,
-            'orientation': w_rot,
+            'position': 3.0,
+            'orientation_pick': 0.5,
 
             'distance': 20.0,
             'orientation_tray': 2,
+            'orientation_move': 10,
 
             'pick': 0,
             'move': 0
@@ -198,6 +199,12 @@ class Planner(Node):
         self.model.body(name='target_00').quat = target_0_rot
         self.model.body(name='target_11').quat = target_1_rot
         self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
+        # self.data.site_quat[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, 'target_0')] = target_0_rot
+        # self.data.site_quat[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, 'target_1')] = target_1_rot
+        mujoco.mj_forward(self.model, self.data)
+        # self.data.site_xmat[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, 'target_0')] = quat_to_rotmat(self.data.xquat[self.model.body(name="target_0").id])
+        # self.data.site_xmat[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, 'target_1')] = quat_to_rotmat(self.data.xquat[self.model.body(name="target_1").id])
+
 
 
 
@@ -395,12 +402,12 @@ class Planner(Node):
             self.gripper_control(gripper_idx=1, action='close')
             self.gripper_control(gripper_idx=2, action='close')
 
-        tray_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+        # tray_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
 
-        dot_product = np.abs(np.dot(tray_rot/np.linalg.norm(tray_rot), self.planner.target_3[3:]/np.linalg.norm(self.planner.target_3[3:])))
-        dot_product = np.clip(dot_product, -1.0, 1.0)
-        cost_r_tray = 2 * np.arccos(dot_product)
-        cost_r_tray = np.sum(cost_r_tray)
+        # dot_product = np.abs(np.dot(tray_rot/np.linalg.norm(tray_rot), self.planner.target_3[3:]/np.linalg.norm(self.planner.target_3[3:])))
+        # dot_product = np.clip(dot_product, -1.0, 1.0)
+        # cost_r_tray = 2 * np.arccos(dot_product)
+        # cost_r_tray = np.sum(cost_r_tray)
 
 
         # if self.task == 'pick':
@@ -424,15 +431,15 @@ class Planner(Node):
         self.viewer.sync()
 
         cost_c, cost_dist, cost_g, cost_r = cost_list
-        print("TRAY ROT:", cost_r_tray, flush=True)
-        print("INIT QUATS BOX",self.data.xquat[self.model.body(name="target_0").id], self.data.xquat[self.model.body(name="target_1").id], flush=True)
+        # print("TRAY ROT:", cost_r_tray, flush=True)
+        # print("INIT QUATS BOX",self.data.xquat[self.model.body(name="target_0").id], self.data.xquat[self.model.body(name="target_1").id], flush=True)
 
-        print("EEF!ROT:", self.data.xquat[self.planner.hande_id_1], flush=True)
+        # print("EEF!ROT:", self.data.xquat[self.planner.hande_id_1], flush=True)
         
         # Print debug info
         print(f'Task: {self.task} | '
               f'Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms | '
-              f'Cost dist: {"%.2f"%(float(cost_dist))} | '
+              f'Cost eq: {"%.2f"%(float(cost_dist))} | '
               f'Cost g: {"%.2f"%(float(cost_g))} | '
               f'Cost r: {"%.2f"%(float(cost_r))} | '
               f'Cost c: {"%.2f"%(float(cost_c))} | '
