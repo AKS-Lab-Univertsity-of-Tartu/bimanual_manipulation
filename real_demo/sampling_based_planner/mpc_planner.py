@@ -18,7 +18,7 @@ class run_cem_planner:
     def __init__(self, model, data, num_dof=12, num_batch=500, num_steps=20, 
                  maxiter_cem=1, maxiter_projection=5, num_elite=0.05, timestep=0.05,
                  position_threshold=0.06, rotation_threshold=0.1,
-                 ik_pos_thresh=0.06, ik_rot_thresh=0.1, 
+                 ik_pos_thresh=0.08, ik_rot_thresh=0.1, 
                  collision_free_ik_dt=0.5, inference=False, rnn=None,
                  max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
                  max_joint_acc=2.0, max_joint_jerk=4.0,

@@ -170,6 +170,9 @@ class Planner(Node):
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
 
+        self.tray_init_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
+        self.tray_init_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
+
         target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
         target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
         target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
@@ -314,10 +317,10 @@ class Planner(Node):
             self.gripper_control(gripper_idx=1, action='close')
         elif target_reached and self.task=='move':
             print("================== TARGRT REACHED UPDATING TARGET ==================")
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_positions[self.target_idx]
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_rotations[self.target_idx]
-            self.planner.target_2[:3] = target_positions[self.target_idx]
-            self.planner.target_2[3:] = target_rotations[self.target_idx]
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_pos
+            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_rot
+            self.planner.target_2[:3] = self.tray_init_pos
+            self.planner.target_2[3:] = self.tray_init_rot
             if self.target_idx < len(target_positions)-1:
                 self.target_idx+=1
 
