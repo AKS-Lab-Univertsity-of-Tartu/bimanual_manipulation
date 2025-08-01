@@ -22,6 +22,18 @@ from rtde_receive import RTDEReceiveInterface as RTDEReceive
 PACKAGE_DIR = get_package_share_directory('real_demo')
 np.set_printoptions(precision=4, suppress=True)
 
+target_positions = np.array([
+    [-0.25, -0.2, 0.3],
+    [-0.25, 0.0, 0.3],
+    [-0.25, -0.1, 0.3],
+])
+
+target_rotations = np.array([
+    quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-90, [0, 0, 1])),
+    quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-135, [0, 0, 1])),
+    quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-45, [0, 0, 1])),
+])
+
 class Planner(Node):
     def __init__(self):
         super().__init__('planner')
@@ -85,6 +97,7 @@ class Planner(Node):
             }
 
         self.task = 'pick'
+        self.target_idx = 0
 
         cost_weights = {
             'collision': 500,
@@ -159,7 +172,7 @@ class Planner(Node):
 
         target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
         target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
-        target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-90, [0, 0, 1]))
+        target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
 
         self.model.body(name='target_0').quat = target_0_rot
         self.model.body(name='target_1').quat = target_1_rot
@@ -277,16 +290,36 @@ class Planner(Node):
         current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_1[:3])
         current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], self.planner.target_1[3:])
 
-        target_reached = (
-                current_cost_g_0 < self.grab_pos_thresh \
-                and current_cost_r_0 < self.grab_rot_thresh \
-                and current_cost_g_1 < self.grab_pos_thresh \
-                and current_cost_r_1 < self.grab_rot_thresh
-        )
+        tray_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+        tray_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+        current_cost_g_tray = np.linalg.norm(tray_pos - self.planner.target_2[:3])
+        current_cost_r_tray = quaternion_distance(tray_rot, self.planner.target_2[3:])
+
+        if self.task=='pick':
+            target_reached = (
+                    current_cost_g_0 < self.grab_pos_thresh \
+                    and current_cost_r_0 < self.grab_rot_thresh \
+                    and current_cost_g_1 < self.grab_pos_thresh \
+                    and current_cost_r_1 < self.grab_rot_thresh
+            )
+        elif self.task=='move':
+            target_reached = (
+                    current_cost_g_tray < self.grab_pos_thresh \
+                    and current_cost_r_tray < self.grab_rot_thresh \
+            )
+
         if target_reached and self.task=='pick':
             self.task = 'move'
             self.gripper_control(gripper_idx=0, action='close')
             self.gripper_control(gripper_idx=1, action='close')
+        elif target_reached and self.task=='move':
+            print("================== TARGRT REACHED UPDATING TARGET ==================")
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_positions[self.target_idx]
+            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_rotations[self.target_idx]
+            self.planner.target_2[:3] = target_positions[self.target_idx]
+            self.planner.target_2[3:] = target_rotations[self.target_idx]
+            if self.target_idx < len(target_positions)-1:
+                self.target_idx+=1
 
         if self.record_data_:    
             theta = self.data.qpos[self.joint_mask_pos]
@@ -315,6 +348,7 @@ class Planner(Node):
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
               f'\n| Cost gr0: {"%.2f, %.2f"%(float(current_cost_g_0), float(current_cost_r_0))} '
               f'\n| Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} '
+              f'\n| Cost tr: {"%.2f, %.2f"%(float(current_cost_g_tray), float(current_cost_r_tray))} '
               f'\n| Cost: {np.round(cost, 2)} ', flush=True)
         
         time_until_next_step = self.model.opt.timestep - (time.time() - start_time)

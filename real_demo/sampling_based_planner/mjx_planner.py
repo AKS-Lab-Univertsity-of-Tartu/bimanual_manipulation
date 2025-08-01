@@ -553,17 +553,17 @@ class cem_planner():
 		z_rot = self.angle_between_lines(p1, p2, p3, p4)
 		tray_rot = self.quaternion_multiply(tray_rot_init, self.rotation_quaternion(z_rot, jnp.array([0, 0, 1])))
 
-		# # xz plane y-axis rotation
-		p1, p2 = (eef_pos_0_init[2], eef_pos_0_init[0]), (eef_pos_1_init[2], eef_pos_1_init[0])
-		p3, p4 = (eef_pos_0[2], eef_pos_0[0]), (eef_pos_1[2], eef_pos_1[0])
-		y_rot = self.angle_between_lines(p1, p2, p3, p4)
-		tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(y_rot, jnp.array([0, 1, 0])))
+		# # # xz plane y-axis rotation
+		# p1, p2 = (eef_pos_0_init[2], eef_pos_0_init[0]), (eef_pos_1_init[2], eef_pos_1_init[0])
+		# p3, p4 = (eef_pos_0[2], eef_pos_0[0]), (eef_pos_1[2], eef_pos_1[0])
+		# y_rot = self.angle_between_lines(p1, p2, p3, p4)
+		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(y_rot, jnp.array([0, 1, 0])))
 
-		# # yz plane x-axis rotation
-		p1, p2 = (eef_pos_0_init[1], eef_pos_0_init[2]), (eef_pos_1_init[1], eef_pos_1_init[2])
-		p3, p4 = (eef_pos_0[1], eef_pos_0[2]), (eef_pos_1[1], eef_pos_1[2])
-		x_rot = self.angle_between_lines(p1, p2, p3, p4)
-		tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(x_rot, jnp.array([1, 0, 0])))
+		# # # yz plane x-axis rotation
+		# p1, p2 = (eef_pos_0_init[1], eef_pos_0_init[2]), (eef_pos_1_init[1], eef_pos_1_init[2])
+		# p3, p4 = (eef_pos_0[1], eef_pos_0[2]), (eef_pos_1[1], eef_pos_1[2])
+		# x_rot = self.angle_between_lines(p1, p2, p3, p4)
+		# tray_rot = self.quaternion_multiply(tray_rot, self.rotation_quaternion(x_rot, jnp.array([1, 0, 0])))
 
 		return tray_rot
 
