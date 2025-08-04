@@ -113,9 +113,12 @@
   </asset>
 
   <worldbody>
-    <body name="table_0" pos="0 0 0" gravcomp="1">
-      <joint type="slide" axis="1 0 0" range="0 0"/>
-      <geom name="table_geom_0" type="box" size="0.55 0.625 0.025" rgba="0.6 0.4 0.3 1" contype="3" conaffinity="3"/>
+    <body name="table_0" pos="0 0 0" >
+      <geom name="table_geom_0" type="box" size="0.55 0.625 0.025" rgba="0.6 0.4 0.3 1" contype="0" conaffinity="0"/>
+      <body name="table_0_joint" pos="0 0 0" >
+        <geom name="table_geom_0_col" type="box" size="0.55 0.625 0.025" rgba="0.6 0 0 0.5" contype="3" conaffinity="3"/>
+        <joint type="slide" axis="0 0 1" range="0 0"/>
+      </body>
 
       <body name="base_1" quat="1 0 0 1" childclass="ur5e" pos="0.37 0 0.161" gravcomp="1">
         <geom mesh="base_0" material="black" class="visual"/>
@@ -205,9 +208,12 @@
       </body>
     </body>
 
-    <body name="table_1" pos="-0.771 0.0 0" gravcomp="1">
-      <joint type="slide" axis="1 0 0" range="0 0"/>
-      <geom name="table_geom_1" type="box" size="0.225 0.375 0.025" rgba="0.6 0.4 0.3 1" contype="3" conaffinity="3"/>
+    <body name="table_1" pos="-0.771 0.0 0" >
+      <geom name="table_geom_1" type="box" size="0.225 0.375 0.025" rgba="0.6 0.4 0.3 1" contype="0" conaffinity="0"/>
+      <body name="table_1_joint" pos="0 0 0" >
+        <geom name="table_geom_1_col" type="box" size="0.225 0.375 0.025" rgba="0.6 0 0 0.5" contype="3" conaffinity="3"/>
+        <joint type="slide" axis="0 0 1" range="0 0"/>
+      </body>
 
       <body name="base_2" quat="1 0 0 1" childclass="ur5e" pos="-0.100 -0.308 0.025" gravcomp="1">
         <geom mesh="base_0" material="black" class="visual"/>
@@ -352,4 +358,11 @@
       </body>
     </body>
   </worldbody>
+
+
+  <equality>
+    <weld body1="table_0" body2="table_0_joint"/>
+    <weld body1="table_1" body2="table_1_joint"/>
+  </equality>
+
 </mujoco>

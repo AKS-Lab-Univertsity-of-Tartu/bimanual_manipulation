@@ -170,19 +170,6 @@ class Planner(Node):
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
 
-        self.tray_init_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
-        self.tray_init_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
-
-        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
-        target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
-        target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
-
-        self.model.body(name='target_0').quat = target_0_rot
-        self.model.body(name='target_1').quat = target_1_rot
-        self.model.body(name='target_00').quat = target_0_rot
-        self.model.body(name='target_11').quat = target_1_rot
-        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
-
         # Set the table positions alligmed with the motion capture coordinate system
         if self.use_hardware:
             setup = np.load(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.npz'), allow_pickle=True)
@@ -198,9 +185,19 @@ class Planner(Node):
             self.model.body(name='tray').pos += marker_diff
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
-        else:
-            table_0_pos = self.model.body(name='table_0').pos
-            table_1_pos = self.model.body(name='table_1').pos
+
+        self.tray_init_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
+        self.tray_init_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
+
+        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
+        target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
+        target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
+
+        self.model.body(name='target_0').quat = target_0_rot
+        self.model.body(name='target_1').quat = target_1_rot
+        self.model.body(name='target_00').quat = target_0_rot
+        self.model.body(name='target_11').quat = target_1_rot
+        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
 
         mujoco.mj_forward(self.model, self.data)
 
@@ -217,8 +214,6 @@ class Planner(Node):
             timestep=self.timestep,
             position_threshold=position_threshold,
             rotation_threshold=rotation_threshold,
-            table_0_pos=table_0_pos,
-            table_1_pos=table_1_pos,
             cost_weights=cost_weights
         )
         
@@ -264,6 +259,7 @@ class Planner(Node):
             current_pos_1 = np.array(self.rtde_r_1.getActualQ())
 
             current_pos = np.concatenate((current_pos_0, current_pos_1), axis=None)
+            # current_pos = self.data.qpos[self.joint_mask_pos]
             current_vel = self.thetadot
         else:
             current_pos = self.data.qpos[self.joint_mask_pos]
@@ -282,6 +278,9 @@ class Planner(Node):
             current_pos = np.concatenate((np.array(self.rtde_r_0.getActualQ()), np.array(self.rtde_r_1.getActualQ())), axis=None)
             self.data.qpos[self.joint_mask_pos] = current_pos
             mujoco.mj_forward(self.model, self.data)
+            # self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+            # self.data.qvel[self.joint_mask_vel] = self.thetadot
+            # mujoco.mj_step(self.model, self.data)
         else:
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
             self.data.qvel[self.joint_mask_vel] = self.thetadot
@@ -371,8 +370,8 @@ class Planner(Node):
 
     def move_to_start(self):
         """Move robot to initial joint position"""
-        self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         self.gripper_control(gripper_idx=0, action='open') 
         self.gripper_control(gripper_idx=1, action='open') 
         print("Moved to initial pose.", flush=True)
@@ -387,11 +386,11 @@ class Planner(Node):
             self.rtde_c_1 = RTDEControl("192.168.0.124")
             self.rtde_r_1 = RTDEReceive("192.168.0.124")
 
-            self.grippers['0']['srv'] = self.create_client(GripperService, 'gripper_0/gripper_service')
+            self.grippers['0']['srv'] = self.create_client(GripperService, 'gripper_1/gripper_service')
             while not self.grippers['0']['srv'].wait_for_service(timeout_sec=1.0):
                 self.get_logger().info('Gripper 0 service not available, waiting again...')
 
-            self.grippers['1']['srv'] = self.create_client(GripperService, 'gripper_1/gripper_service')
+            self.grippers['1']['srv'] = self.create_client(GripperService, 'gripper_2/gripper_service')
             while not self.grippers['1']['srv'].wait_for_service(timeout_sec=1.0):
                 self.get_logger().info('Gripper 1 service not available, waiting again...')
 
@@ -422,10 +421,13 @@ class Planner(Node):
 
         if self.task == 'pick':
             pose = msg.pose
-            tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.08])
+            tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.09])
             self.model.body(name='tray').pos = tray_pos
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
-            mujoco.mj_forward(self.model, self.data)
+            # mujoco.mj_forward(self.model, self.data)
+            # self.planner.update_targets(target_idx=0, target_pos=self.data.xpos[self.model.body(name="target_00").id], target_rot=self.data.xquat[self.model.body(name="target_00").id])
+            # self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_11").id], target_rot=self.data.xquat[self.model.body(name="target_11").id])
+
             self.planner.update_targets(target_idx=0, target_pos=self.data.xpos[self.model.body(name="target_0").id], target_rot = self.model.body(name='target_0').quat)
             self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_1").id], target_rot = self.model.body(name='target_1').quat)
 

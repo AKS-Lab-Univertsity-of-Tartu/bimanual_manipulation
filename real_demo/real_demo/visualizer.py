@@ -62,8 +62,8 @@ class Visualizer(Node):
                 'thetadot': [],
                 'theta_planned': [],
                 'thetadot_planned': [],
+                'target_0': [],
                 'target_1': [],
-                'target_2': [],
                 'theta_planned_batched': [],
                 'thetadot_planned_batched': [],
                 'cost_cgr_batched': [],
@@ -169,8 +169,8 @@ class Visualizer(Node):
 
     def move_to_start(self):
         """Move robot to initial joint position"""
-        # self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
-        # self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
+        self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         print("Moved to initial pose.")
 
     def view_model(self):
@@ -189,6 +189,7 @@ class Visualizer(Node):
             thetadot = self.data.qvel[self.joint_mask_vel]
 
         self.data.qpos[self.joint_mask_pos] = theta
+        self.data.qvel = np.zeros(self.data.qvel.shape)
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
@@ -275,7 +276,7 @@ class Visualizer(Node):
 
     def object0_callback(self, msg):
         pose = msg.pose
-        tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.07])
+        tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.09])
         self.model.body(name='tray').pos = tray_pos
         self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
