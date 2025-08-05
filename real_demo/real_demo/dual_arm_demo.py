@@ -102,16 +102,16 @@ class Planner(Node):
         cost_weights = {
             'collision': 500,
 			'theta': 0.3,
-			'z-axis': 5.0,
+			'z-axis': 10.0,
             'velocity': 0.1,
 
             'position': 3.0,
             'orientation_pick': 0.5,
 
-            'distance': 20.0,
+            'distance': 100.0,
             'position_tray': 3.0,
             'orientation_tray': 2,
-            'orientation_move': 10,
+            'orientation_move': 15,
 
             'pick': 0,
             'move': 0
