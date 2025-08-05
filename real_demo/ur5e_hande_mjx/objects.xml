@@ -8,8 +8,8 @@
         <geom name="tray_base" type="box" size="0.11 0.15 0.02" rgba="0.0 0.4 0.0 0"  mass="0.05" contype="0" conaffinity="0" friction="1 0.005 0.0001"/>
         <geom name="tray_left" type="box" pos="-0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0"  mass="0.05" contype="0" conaffinity="0"/>
         <geom name="tray_right" type="box" pos="0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0"  mass="0.05" contype="0" conaffinity="0"/>
-        <geom name="tray_back" type="box" pos="0 -0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 0"  mass="0.05" contype="1" conaffinity="1"/>
-        <geom name="tray_front" type="box" pos="0 0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 0"  mass="0.05" contype="1" conaffinity="1"/>
+        <geom name="tray_back" type="box" pos="0 -0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 0"  mass="0.05" contype="2" conaffinity="1046524"/>
+        <geom name="tray_front" type="box" pos="0 0.15 0.05" size="0.15 0.01 0.05" rgba="0.0 0.4 0.0 0"  mass="0.05" contype="2" conaffinity="1046524"/>
     </body>
 
     <body mocap="true" name="tray_mocap" pos="-0.25 -0.25 0.045" quat="1 0 0 0">
@@ -35,11 +35,11 @@
             <site name="frame_z_1" size="0.005" type="box" fromto="0 0 0  0 0 0.1" rgba="0 0 1 1" group="1"/>
         </body>
 
-        <geom name="object_tray_base_mocap" type="box" size="0.11 0.15 0.02" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2" friction="1 0.005 0.0001"/>
-        <geom name="object_tray_left_mocap" type="box" pos="-0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
-        <geom name="object_tray_right_mocap" type="box" pos="0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
-        <geom name="object_tray_back_mocap" type="box" pos="0 -0.15 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
-        <geom name="object_tray_front_mocap" type="box" pos="0 0.15 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="2" conaffinity="2"/>
+        <geom name="object_tray_base_mocap" type="box" size="0.11 0.15 0.02" rgba="0.0 0.4 0.0 0.3" contype="1" conaffinity="3121148" friction="1 0.005 0.0001"/>
+        <geom name="object_tray_left_mocap" type="box" pos="-0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0.3" contype="1" conaffinity="3121148"/>
+        <geom name="object_tray_right_mocap" type="box" pos="0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.0 0.4 0.0 0.3" contype="1" conaffinity="3121148"/>
+        <geom name="object_tray_back_mocap" type="box" pos="0 -0.15 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="1" conaffinity="3121148"/>
+        <geom name="object_tray_front_mocap" type="box" pos="0 0.15 0.05" size="0.11 0.01 0.05" rgba="0.0 0.4 0.0 0.3" contype="1" conaffinity="3121148"/>
 
     </body>
 
