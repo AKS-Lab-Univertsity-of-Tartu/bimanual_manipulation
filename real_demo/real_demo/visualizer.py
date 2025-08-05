@@ -127,6 +127,11 @@ class Visualizer(Node):
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0 
 
+        body_ids = range(self.model.nbody)
+        body_names = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, i) for i in body_ids]
+        for name in body_names:
+            print(name, flush=True)
+
         if not self.playback:
 
             if self.use_hardware:
