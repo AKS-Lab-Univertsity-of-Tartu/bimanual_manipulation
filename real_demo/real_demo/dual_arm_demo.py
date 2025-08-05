@@ -106,7 +106,7 @@ class Planner(Node):
             'velocity': 0.1,
 
             'position': 3.0,
-            'orientation_pick': 0.5,
+            'orientation_pick': 0.7,
 
             'distance': 100.0,
             'position_tray': 3.0,

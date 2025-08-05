@@ -682,10 +682,6 @@ class cem_planner():
 		# Keep arm at all times closer to the initial state
 		cost_theta = jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T - self.init_joint_position)
 
-		# Keep end effectors at the same z-level and same velocity 
-		cost_eef_pos = jnp.linalg.norm(eef_0[:, 2] - eef_1[:, 2])
-		# cost_eef_vel = jnp.linalg.norm(eef_vel_lin_0 - eef_vel_lin_1)	
-
 		rel_pos = eef_0[:,:3] - eef_1[:,:3]        # Shape (Batch, 3)
 		rel_vel = eef_vel_lin_0 - eef_vel_lin_1 # Shape (Batch, 3)
 
@@ -711,6 +707,11 @@ class cem_planner():
 		cost_r_pick = (jnp.sum(cost_r_0) + jnp.sum(cost_r_1))/2
 
 		''' Cost for moving '''
+
+		# Keep end effectors at the same z-level and same velocity 
+		cost_eef_pos = jnp.linalg.norm(eef_0[:, 2] - eef_1[:, 2])
+		# cost_eef_vel = jnp.linalg.norm(eef_vel_lin_0 - eef_vel_lin_1)	
+
 
 		# Keeping arms at the same distance
 		distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
@@ -738,12 +739,12 @@ class cem_planner():
 		cost = (
 			cost_weights['collision']*cost_c +
 			cost_weights['theta']*cost_theta +
-			cost_weights['z-axis']*cost_eef_pos +
 			cost_weights['velocity']*cost_eef_vel +
 
 			cost_weights['pick']*cost_weights['position']*cost_g +
 			cost_weights['pick']*cost_weights['orientation_pick']*cost_r_pick +
 
+			cost_weights['move']*cost_weights['z-axis']*cost_eef_pos +
 			cost_weights['move']*cost_weights['distance']*cost_dist +
 			cost_weights['move']*cost_weights['position_tray']*cost_g_tray +
 			cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray +
