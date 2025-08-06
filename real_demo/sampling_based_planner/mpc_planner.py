@@ -79,8 +79,10 @@ class run_cem_planner:
         self.target_rot_1 = data.xquat[model.body(name="target_1").id].copy()
         self.target_1 = np.concatenate([self.target_pos_1, self.target_rot_1])
 
-        self.target_pos_2 = data.mocap_pos[model.body_mocapid[model.body(name='tray_mocap_target').id]]
-        self.target_rot_2 = data.mocap_quat[model.body_mocapid[model.body(name='tray_mocap_target').id]] 
+        # self.target_pos_2 = data.mocap_pos[model.body_mocapid[model.body(name='tray_mocap_target').id]]
+        # self.target_rot_2 = data.mocap_quat[model.body_mocapid[model.body(name='tray_mocap_target').id]] 
+        self.target_pos_2 = data.xpos[model.body(name="tray_mocap_target").id]
+        self.target_rot_2 = data.xquat[model.body(name="tray_mocap_target").id].copy()
         self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
         # Get obstacle reference

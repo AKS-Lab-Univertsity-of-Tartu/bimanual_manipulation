@@ -740,11 +740,11 @@ class cem_planner():
 			cost_weights['collision']*cost_c +
 			cost_weights['theta']*cost_theta +
 			cost_weights['velocity']*cost_eef_vel +
+			cost_weights['z-axis']*cost_eef_pos +
 
 			cost_weights['pick']*cost_weights['position']*cost_g +
 			cost_weights['pick']*cost_weights['orientation_pick']*cost_r_pick +
 
-			cost_weights['move']*cost_weights['z-axis']*cost_eef_pos +
 			cost_weights['move']*cost_weights['distance']*cost_dist +
 			cost_weights['move']*cost_weights['position_tray']*cost_g_tray +
 			cost_weights['move']*cost_weights['orientation_tray']*cost_r_tray +

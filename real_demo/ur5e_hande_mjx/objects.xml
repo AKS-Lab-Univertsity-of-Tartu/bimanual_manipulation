@@ -43,7 +43,11 @@
 
     </body>
 
-    <body mocap="true" name="tray_mocap_target" pos="-0.25 -0.25 0.3" quat="1 0 0 0">
+    <body name="tray_mocap_target" pos="-0.25 -0.25 0.3" quat="1 0 0 0">
+
+        <joint name="slide_x" type="slide" axis="1 0 0"/>
+        <joint name="slide_y" type="slide" axis="0 1 0"/>
+        <joint name="slide_z" type="slide" axis="0 0 1"/>
 
         <site name="frame_x_2" size="0.005" type="box" fromto="0 0 0.06  0.1 0 0.06" rgba="0.4 0 0 0.4" group="1"/>
         <site name="frame_y_2" size="0.005" type="box" fromto="0 0 0.06  0 0.1 0.06" rgba="0 0.4 0 0.4" group="1"/> 
@@ -63,22 +67,22 @@
             <site name="frame_z_11" size="0.005" type="box" fromto="0 0 0  0 0 0.1" rgba="0 0 0.4 0.1" group="1"/>
         </body>
 
-        <geom name="object_tray_base_mocap_target" type="box" size="0.11 0.15 0.02" rgba="0.4 0.4 0.4 0.1" contype="0" conaffinity="0" friction="1 0.005 0.0001"/>
-        <geom name="object_tray_left_mocap_target" type="box" pos="-0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.4 0.4 0.4 0.1" contype="0" conaffinity="0"/>
-        <geom name="object_tray_right_mocap_target" type="box" pos="0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.4 0.4 0.4 0.1" contype="0" conaffinity="0"/>
-        <geom name="object_tray_back_mocap_target" type="box" pos="0 -0.15 0.05" size="0.11 0.01 0.05" rgba="0.4 0.4 0.4 0.1" contype="0" conaffinity="0"/>
-        <geom name="object_tray_front_mocap_target" type="box" pos="0 0.15 0.05" size="0.11 0.01 0.05" rgba="0.4 0.4 0.4 0.1" contype="0" conaffinity="0"/>
+        <geom name="object_tray_base_mocap_target" type="box" size="0.11 0.15 0.02" rgba="0.4 0.4 0.4 0.3" contype="0" conaffinity="0" friction="1 0.005 0.0001"/>
+        <geom name="object_tray_left_mocap_target" type="box" pos="-0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.4 0.4 0.4 0.3" contype="0" conaffinity="0"/>
+        <geom name="object_tray_right_mocap_target" type="box" pos="0.11 0 0.05" size="0.01 0.15 0.05" rgba="0.4 0.4 0.4 0.3" contype="0" conaffinity="0"/>
+        <geom name="object_tray_back_mocap_target" type="box" pos="0 -0.15 0.05" size="0.11 0.01 0.05" rgba="0.4 0.4 0.4 0.3" contype="0" conaffinity="0"/>
+        <geom name="object_tray_front_mocap_target" type="box" pos="0 0.15 0.05" size="0.11 0.01 0.05" rgba="0.4 0.4 0.4 0.3" contype="0" conaffinity="0"/>
 
     </body>
 
-    <body name="wall_0" pos="-0.4 -0.25 0.13" quat="1 0 0 0">
+    <!-- <body name="wall_0" pos="-0.4 -0.25 0.13" quat="1 0 0 0">
         <joint name="wall_0" type="slide" axis="0 0 1" range="0 0"/>
         <geom name="wall_0" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="0" conaffinity="61565"/>
     </body>
     <body name="wall_1" pos="-0.1 -0.25 0.13" quat="1 0 0 0">
         <joint name="wall_1" type="slide" axis="0 0 1" range="0 0"/>
         <geom name="wall_1" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="0" conaffinity="61565"/>
-    </body>
+    </body> -->
 
     <!-- <body name="box" pos="-0.3 0.2 0.13" quat="1 0 0 0">
         <joint name="box" type="free"/>

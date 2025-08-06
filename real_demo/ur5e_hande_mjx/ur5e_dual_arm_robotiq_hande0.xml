@@ -359,4 +359,10 @@
     <weld body1="table_1" body2="table_1_joint"/>
   </equality>
 
+  <actuator>
+    <position name="slide_x" joint="slide_x" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>
+    <position name="slide_y" joint="slide_y" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>
+    <position name="slide_z" joint="slide_z" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>
+  </actuator> 
+
 </mujoco>

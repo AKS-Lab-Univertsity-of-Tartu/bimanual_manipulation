@@ -106,7 +106,7 @@ class Planner(Node):
             'velocity': 0.1,
 
             'position': 3.0,
-            'orientation_pick': 0.7,
+            'orientation_pick': 1,
 
             'distance': 100.0,
             'position_tray': 5.0,
@@ -183,21 +183,22 @@ class Planner(Node):
             self.model.body(name='table1_marker').pos = setup['setup'][0][3]
 
             self.model.body(name='tray').pos += marker_diff
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
+            # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
+            self.model.body(name='tray_mocap_target').pos += marker_diff
 
         self.tray_init_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
         self.tray_init_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
 
         target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
         target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
-        target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
+        # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
 
         self.model.body(name='target_0').quat = target_0_rot
         self.model.body(name='target_1').quat = target_1_rot
         self.model.body(name='target_00').quat = target_0_rot
         self.model.body(name='target_11').quat = target_1_rot
-        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
+        # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
 
         mujoco.mj_forward(self.model, self.data)
 
@@ -236,6 +237,8 @@ class Planner(Node):
     def control_loop(self):
         """Main control loop running at fixed interval"""
         start_time = time.time()
+
+        self.planner.target_2[:3] = self.data.xpos[self.model.body(name='tray_mocap_target').id]
 
         if self.task == 'move':
             eef_pos_0 = self.data.site_xpos[self.planner.tcp_id_0]
@@ -277,10 +280,10 @@ class Planner(Node):
             # Update MuJoCo state
             current_pos = np.concatenate((np.array(self.rtde_r_0.getActualQ()), np.array(self.rtde_r_1.getActualQ())), axis=None)
             self.data.qpos[self.joint_mask_pos] = current_pos
-            mujoco.mj_forward(self.model, self.data)
-            # self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+            # mujoco.mj_forward(self.model, self.data)
+            self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
             # self.data.qvel[self.joint_mask_vel] = self.thetadot
-            # mujoco.mj_step(self.model, self.data)
+            mujoco.mj_step(self.model, self.data)
         else:
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
             self.data.qvel[self.joint_mask_vel] = self.thetadot
@@ -312,16 +315,24 @@ class Planner(Node):
 
         if target_reached and self.task=='pick':
             self.task = 'move'
+            # if self.use_hardware:
+            #     self.rtde_c_0.speedStop()
+            #     self.rtde_c_1.speedStop()
+            #     self.thetadot = np.zeros(self.thetadot.shape)
             self.gripper_control(gripper_idx=0, action='close')
             self.gripper_control(gripper_idx=1, action='close')
-        elif target_reached and self.task=='move':
-            print("================== TARGRT REACHED UPDATING TARGET ==================")
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_pos
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_rot
-            self.planner.target_2[:3] = self.tray_init_pos
-            self.planner.target_2[3:] = self.tray_init_rot
-            if self.target_idx < len(target_positions)-1:
-                self.target_idx+=1
+        # elif target_reached and self.task=='move':
+        #     if self.use_hardware:
+        #         self.rtde_c_0.speedStop()
+        #         self.rtde_c_1.speedStop()
+        #         self.thetadot = np.zeros(self.thetadot.shape)
+        #     print("================== TARGRT REACHED UPDATING TARGET ==================")
+        #     # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_pos
+        #     # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_rot
+        #     # self.planner.target_2[:3] = self.tray_init_pos
+        #     # self.planner.target_2[3:] = self.tray_init_rot
+        #     if self.target_idx < len(target_positions)-1:
+        #         self.target_idx+=1
 
         if self.record_data_:    
             theta = self.data.qpos[self.joint_mask_pos]
