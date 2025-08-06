@@ -71,14 +71,14 @@
 
     </body>
 
-    <!-- <body name="wall_0" pos="-0.4 -0.25 0.13" quat="1 0 0 0">
+    <body name="wall_0" pos="-0.4 -0.25 0.13" quat="1 0 0 0">
         <joint name="wall_0" type="slide" axis="0 0 1" range="0 0"/>
-        <geom name="wall_0" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="3" conaffinity="3"/>
+        <geom name="wall_0" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="0" conaffinity="61565"/>
     </body>
     <body name="wall_1" pos="-0.1 -0.25 0.13" quat="1 0 0 0">
         <joint name="wall_1" type="slide" axis="0 0 1" range="0 0"/>
-        <geom name="wall_1" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="3" conaffinity="3"/>
-    </body> -->
+        <geom name="wall_1" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="0" conaffinity="61565"/>
+    </body>
 
     <!-- <body name="box" pos="-0.3 0.2 0.13" quat="1 0 0 0">
         <joint name="box" type="free"/>
