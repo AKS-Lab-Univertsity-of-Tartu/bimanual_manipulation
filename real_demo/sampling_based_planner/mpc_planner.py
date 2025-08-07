@@ -75,14 +75,8 @@ class run_cem_planner:
         self.target_rot_0 = data.xquat[model.body(name="target_0").id].copy()
         self.target_0 = np.concatenate([self.target_pos_0, self.target_rot_0])
 
-        self.target_pos_1 = data.xpos[model.body(name="target_1").id]
-        self.target_rot_1 = data.xquat[model.body(name="target_1").id].copy()
-        self.target_1 = np.concatenate([self.target_pos_1, self.target_rot_1])
-
-        # self.target_pos_2 = data.mocap_pos[model.body_mocapid[model.body(name='tray_mocap_target').id]]
-        # self.target_rot_2 = data.mocap_quat[model.body_mocapid[model.body(name='tray_mocap_target').id]] 
-        self.target_pos_2 = data.xpos[model.body(name="tray_mocap_target").id]
-        self.target_rot_2 = data.xquat[model.body(name="tray_mocap_target").id].copy()
+        self.target_pos_2 = data.xpos[model.body(name="ball").id]
+        self.target_rot_2 = data.xquat[model.body(name="ball").id].copy()
         self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
         # Get obstacle reference
@@ -215,35 +209,28 @@ class run_cem_planner:
             self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
-        if task == "pick":
-            self.cost_weights['pick'] = 1
-            self.cost_weights['move'] = 0
-        elif task == 'move':
-            self.cost_weights['pick'] = 0
-            self.cost_weights['move'] = 1
-
-        tray_init = np.concatenate([
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]],
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-        ])
+        # if task == "pick":
+        #     self.cost_weights['pick'] = 1
+        #     self.cost_weights['move'] = 0
+        # elif task == 'move':
+        #     self.cost_weights['pick'] = 0
+        #     self.cost_weights['move'] = 1
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
-        primal_res, fixed_res, idx_min, best_target_1_rot, best_target_2_rot = self.cem.compute_cem(
+        primal_res, fixed_res, idx_min = self.cem.compute_cem(
             self.xi_mean,
             self.xi_cov,
             current_pos,
             current_vel,
             np.zeros(self.num_dof),  # Zero initial acceleration
             self.target_0,
-            self.target_1,
             self.target_2,
             self.lamda_init,
             self.s_init,
             self.xi_samples,
             self.cost_weights,
-            tray_init
         )
 
         # Get mean velocity command (average middle 90% of trajectory)
@@ -252,33 +239,33 @@ class run_cem_planner:
         thetadot_0 = thetadot_cem[:6]
         thetadot_1 = thetadot_cem[6:]
 
-        if task == "pick":
+        # if task == "pick":
 
-            # Check if we should switch to collision-free IK for each arm
-            current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.target_pos_0)
-            current_cost_r_0 = quaternion_distance(self.data.xquat[self.hande_id_0], self.target_rot_0)
+        #     # Check if we should switch to collision-free IK for each arm
+        #     current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.target_pos_0)
+        #     current_cost_r_0 = quaternion_distance(self.data.xquat[self.hande_id_0], self.target_rot_0)
                 
-            current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.target_pos_1)
-            current_cost_r_1 = quaternion_distance(self.data.xquat[self.hande_id_1], self.target_rot_1)
+        #     current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.target_pos_1)
+        #     current_cost_r_1 = quaternion_distance(self.data.xquat[self.hande_id_1], self.target_rot_1)
             
-            joint_states = np.zeros(self.cem.joint_mask_pos.shape)
-            joint_states[self.cem.joint_mask_pos] = current_pos
+        #     joint_states = np.zeros(self.cem.joint_mask_pos.shape)
+        #     joint_states[self.cem.joint_mask_pos] = current_pos
 
-            # Arm 0 control
-            if current_cost_g_0 < self.ik_pos_thresh and current_cost_r_0 < self.ik_rot_thresh:
-                print("Activated ik solution for arm 0")
-                ik_solver_0 = InverseKinematicsSolver(
-                    self.model, joint_states, "tcp_0")
-                ik_solver_0.set_target(self.target_pos_0, self.target_rot_0)
-                thetadot_0 = ik_solver_0.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+        #     # Arm 0 control
+        #     if current_cost_g_0 < self.ik_pos_thresh and current_cost_r_0 < self.ik_rot_thresh:
+        #         print("Activated ik solution for arm 0")
+        #         ik_solver_0 = InverseKinematicsSolver(
+        #             self.model, joint_states, "tcp_0")
+        #         ik_solver_0.set_target(self.target_pos_0, self.target_rot_0)
+        #         thetadot_0 = ik_solver_0.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
             
-            # Arm 1 control
-            if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
-                print("Activated ik solution for arm 1")
-                ik_solver_1 = InverseKinematicsSolver(
-                    self.model, joint_states, "tcp_1")
-                ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-                thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][self.num_dof//2:]
+        #     # Arm 1 control
+        #     if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
+        #         print("Activated ik solution for arm 1")
+        #         ik_solver_1 = InverseKinematicsSolver(
+        #             self.model, joint_states, "tcp_1")
+        #         ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
+        #         thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][self.num_dof//2:]
 
         # Combine control commands
         thetadot = np.concatenate((thetadot_0, thetadot_1))

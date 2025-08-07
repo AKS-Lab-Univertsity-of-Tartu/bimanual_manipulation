@@ -28,12 +28,6 @@ target_positions = np.array([
     [-0.25, -0.1, 0.3],
 ])
 
-target_rotations = np.array([
-    quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-90, [0, 0, 1])),
-    quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-135, [0, 0, 1])),
-    quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-45, [0, 0, 1])),
-])
-
 class Planner(Node):
     def __init__(self):
         super().__init__('planner')
@@ -104,17 +98,12 @@ class Planner(Node):
 			'theta': 0.3,
 			'z-axis': 10.0,
             'velocity': 0.1,
+            'distance': 10.0,
 
-            'position': 3.0,
-            'orientation_pick': 1,
-
-            'distance': 100.0,
-            'position_tray': 5.0,
-            'orientation_tray': 2,
-            'orientation_move': 15,
-
-            'pick': 0,
-            'move': 0
+            'allign': 2.0,
+            'orientation': 3.0,
+            'eef_to_obj': 3.0,
+            'obj_to_targ': 10.0,
         }
 
         self.grab_pos_thresh = 0.02
@@ -182,24 +171,6 @@ class Planner(Node):
             self.model.body(name='table_1').pos = setup['setup'][0][2]
             self.model.body(name='table1_marker').pos = setup['setup'][0][3]
 
-            self.model.body(name='tray').pos += marker_diff
-            # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
-            self.model.body(name='tray_mocap_target').pos += marker_diff
-
-        self.tray_init_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
-        self.tray_init_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
-
-        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
-        target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
-        # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
-
-        self.model.body(name='target_0').quat = target_0_rot
-        self.model.body(name='target_1').quat = target_1_rot
-        self.model.body(name='target_00').quat = target_0_rot
-        self.model.body(name='target_11').quat = target_1_rot
-        # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
-
         mujoco.mj_forward(self.model, self.data)
 
         # Initialize CEM/MPC planner
@@ -238,23 +209,7 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
-        self.planner.target_2[:3] = self.data.xpos[self.model.body(name='tray_mocap_target').id]
-
-        if self.task == 'move':
-            eef_pos_0 = self.data.site_xpos[self.planner.tcp_id_0]
-            eef_pos_1 = self.data.site_xpos[self.planner.tcp_id_1]
-
-            tray_pos = (eef_pos_0+eef_pos_1)/2 - np.array([0, 0, 0.1])
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
-
-            tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-            tray_0_pos = self.data.xpos[self.model.body(name='target_0').id]
-            tray_1_pos = self.data.xpos[self.model.body(name='target_1').id]
-            tray_rot = turn_quat(tray_0_pos, tray_1_pos, eef_pos_0, eef_pos_1, tray_rot_init)
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
-
-            self.planner.update_targets(target_idx=0, target_pos=self.data.xpos[self.model.body(name="target_00").id], target_rot=self.data.xquat[self.model.body(name="target_00").id])
-            self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_11").id], target_rot=self.data.xquat[self.model.body(name="target_11").id])
+        self.planner.target_2[:3] = self.data.xpos[self.model.body(name='ball').id]
 
         # Get current state
         if self.use_hardware:
@@ -289,38 +244,24 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
 
-        current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.target_0[:3])
-        current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], self.planner.target_0[3:])
+        # current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.target_0[:3])
+        current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0, 0.70711, 0.70711, 0]))
             
-        current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_1[:3])
-        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], self.planner.target_1[3:])
+        # current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_1[:3])
+        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0, 0.70711, 0.70711, 0]))
 
-        tray_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-        tray_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-        current_cost_g_tray = np.linalg.norm(tray_pos - self.planner.target_2[:3])
-        current_cost_r_tray = quaternion_distance(tray_rot, self.planner.target_2[3:])
-
-        if self.task=='pick':
-            target_reached = (
-                    current_cost_g_0 < self.grab_pos_thresh \
-                    and current_cost_r_0 < self.grab_rot_thresh \
-                    and current_cost_g_1 < self.grab_pos_thresh \
-                    and current_cost_r_1 < self.grab_rot_thresh
-            )
-        elif self.task=='move':
-            target_reached = (
-                    current_cost_g_tray < self.grab_pos_thresh \
-                    and current_cost_r_tray < self.grab_rot_thresh \
-            )
-
-        if target_reached and self.task=='pick':
-            self.task = 'move'
-            # if self.use_hardware:
-            #     self.rtde_c_0.speedStop()
-            #     self.rtde_c_1.speedStop()
-            #     self.thetadot = np.zeros(self.thetadot.shape)
-            self.gripper_control(gripper_idx=0, action='close')
-            self.gripper_control(gripper_idx=1, action='close')
+        # if self.task=='pick':
+        #     target_reached = (
+        #             current_cost_g_0 < self.grab_pos_thresh \
+        #             and current_cost_r_0 < self.grab_rot_thresh \
+        #             and current_cost_g_1 < self.grab_pos_thresh \
+        #             and current_cost_r_1 < self.grab_rot_thresh
+        #     )
+        # elif self.task=='move':
+        #     target_reached = (
+        #             current_cost_g_tray < self.grab_pos_thresh \
+        #             and current_cost_r_tray < self.grab_rot_thresh \
+        #     )
         # elif target_reached and self.task=='move':
         #     if self.use_hardware:
         #         self.rtde_c_0.speedStop()
@@ -350,18 +291,17 @@ class Planner(Node):
         # Update viewer
         self.viewer.sync()
 
-        cost_c, cost_dist, cost_g, cost_r = cost_list
+        cost_c, cost_r, cost_eef_obj, cost_obj_g = cost_list
         
         # Print debug info
         print(f'\n| Task: {self.task} '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
-              f'\n| Cost eq: {"%.2f"%(float(cost_dist))} '
-              f'\n| Cost g: {"%.2f"%(float(cost_g))} '
+              f'\n| Cost eef to obj: {"%.2f"%(float(cost_eef_obj))} '
+              f'\n| Cost obj to g: {"%.2f"%(float(cost_obj_g))} '
               f'\n| Cost r: {"%.2f"%(float(cost_r))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
-              f'\n| Cost gr0: {"%.2f, %.2f"%(float(current_cost_g_0), float(current_cost_r_0))} '
-              f'\n| Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} '
-              f'\n| Cost tr: {"%.2f, %.2f"%(float(current_cost_g_tray), float(current_cost_r_tray))} '
+              f'\n| Cost gr0: {"%.2f"%(float(current_cost_r_0))} '
+              f'\n| Cost gr1: {"%.2f"%(float(current_cost_r_1))} '
               f'\n| Cost: {np.round(cost, 2)} ', flush=True)
         
         time_until_next_step = self.model.opt.timestep - (time.time() - start_time)
