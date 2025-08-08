@@ -219,7 +219,7 @@ class run_cem_planner:
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
-        primal_res, fixed_res, idx_min = self.cem.compute_cem(
+        primal_res, fixed_res, idx_min, ball_out = self.cem.compute_cem(
             self.xi_mean,
             self.xi_cov,
             current_pos,
@@ -234,10 +234,13 @@ class run_cem_planner:
         )
 
         # Get mean velocity command (average middle 90% of trajectory)
-        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
+        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.3)], axis=0)
 
         thetadot_0 = thetadot_cem[:6]
         thetadot_1 = thetadot_cem[6:]
+        
+        # print("BALL INIT:", self.target_2[:3], flush=True)
+        # print("BALL:", ball_out[:, :3], flush=True)
 
         # if task == "pick":
 

@@ -101,8 +101,8 @@ class Planner(Node):
             'distance': 10.0,
 
             'allign': 2.0,
-            'orientation': 3.0,
-            'eef_to_obj': 3.0,
+            'orientation': 1.0,
+            'eef_to_obj': 7.0,
             'obj_to_targ': 10.0,
         }
 

@@ -163,9 +163,10 @@ class cem_planner():
 		self.geom_ids_all = np.array(self.geom_ids)
 		self.mask = jnp.any(jnp.isin(self.mjx_data.contact.geom, self.geom_ids_all), axis=1)
 
-		target_geom_id = np.array([mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, f'ball')])
+		target_geom_id = np.array([mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball')])
 		target_mask = ~jnp.any(jnp.isin(self.mjx_data.contact.geom, target_geom_id), axis=1)
 		self.mask = jnp.logical_and(target_mask, self.mask)
+
 
 		self.hande_id_0 = self.model.body(name="hande_0").id
 		self.tcp_id_0 = self.model.site(name="tcp_0").id
@@ -175,7 +176,7 @@ class cem_planner():
 
 		self.target_0_id = self.model.body(name="target_0").id
 		self.ball_id = self.model.body(name="ball").id
-		self.ball_qpos_idx = self.mjx_model.body_dofadr[self.mjx_model.body_dofadr[self.ball_id]]
+		self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, None, None, None))
@@ -591,6 +592,7 @@ class cem_planner():
 
 		# Set tray position and orientatio
 		ball = jnp.concatenate([mjx_data.xpos[self.ball_id]	, mjx_data.xquat[self.ball_id]])
+		# ball = jnp.concatenate([mjx_data.qpos[self.ball_qpos_idx : self.ball_qpos_idx + 3], mjx_data.xquat[self.ball_id]])
 
 		# Compute Jacobians using the current MJX API
 		def get_site_pos0(qpos):
@@ -665,8 +667,8 @@ class cem_planner():
 		# Keep arm at all times closer to the initial state
 		cost_theta = jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T - self.init_joint_position)
 
-		# Keep end effectors at the same z-level and same velocity 
-		cost_eef_pos = jnp.linalg.norm(eef_0[:, 2] - eef_1[:, 2])
+		# Keep end effectors at the same yz-level and same velocity 
+		cost_eef_pos = jnp.linalg.norm(eef_0[:, 1:3] - eef_1[:, 1:3])
 
 		rel_pos = eef_0[:,:3] - eef_1[:,:3]        # Shape (Batch, 3)
 		rel_vel = eef_vel_lin_0 - eef_vel_lin_1 # Shape (Batch, 3)
@@ -687,35 +689,37 @@ class cem_planner():
 
 
 		# Allign arms correctly relative to the ball
-		eef_0_obj = eef_0[:, :2] - ball[:, :2]
-		eef_0_obj_dist = jnp.linalg.norm(eef_0_obj, axis=1)
+		# eef_0_obj = eef_0[:, :2] - ball[:, :2]
+		# eef_0_obj_dist = jnp.linalg.norm(eef_0_obj, axis=1)
 
-		eef_1_obj = eef_1[:, :2] - ball[:, :2]
-		eef_1_obj_dist = jnp.linalg.norm(eef_1_obj, axis=1)
+		# eef_1_obj = eef_1[:, :2] - ball[:, :2]
+		# eef_1_obj_dist = jnp.linalg.norm(eef_1_obj, axis=1)
 
-		obj_goal = ball[:, :2] - target_0[:2]
+		obj_goal = ball[:, :3] - target_0[:3]
 		obj_goal_dist = jnp.linalg.norm(obj_goal, axis=1)
 
-		push_align_0 = jnp.abs(jnp.sum(eef_0_obj*obj_goal, axis=1)/(eef_0_obj_dist * obj_goal_dist) - 1)
-		push_align_1 = jnp.abs(jnp.sum(eef_1_obj*obj_goal, axis=1)/(eef_1_obj_dist * obj_goal_dist) - 1)
-		push_align = (jnp.sum(push_align_0) + jnp.sum(push_align_1))/2
+		# push_align_0 = jnp.abs(jnp.sum(eef_0_obj*obj_goal, axis=1)/(eef_0_obj_dist * obj_goal_dist) - 1)
+		# push_align_1 = jnp.abs(jnp.sum(eef_1_obj*obj_goal, axis=1)/(eef_1_obj_dist * obj_goal_dist) - 1)
+		# push_align = (jnp.sum(push_align_0) + jnp.sum(push_align_1))/2
 
 		# Approach the ball with some offset
 		distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
-		cost_dist = jnp.sum((distances - 0.1)**2)
+		cost_dist = jnp.sum((distances - 0.35)**2)
 
+		# Distance between center point between two eef and object with the offset
 		center_point = (eef_0[:, :3]+eef_1[:, :3])/2
 
-		approach_offset = (ball[:, :3] - target_0[:3])
-		approach_offset = approach_offset/(jnp.abs(approach_offset)+0.001)*0.08
-		approach_offset = approach_offset.at[:, 2].set(0.01)
+		# approach_offset = (ball[:, :3] - target_0[:3])
+		# approach_offset = approach_offset/(jnp.abs(approach_offset)+0.00001)*0.06
+		# approach_offset = approach_offset.at[:, 2].set(0.01)
 
-		eef_0_obj_dist = jnp.linalg.norm(eef_0[:, :3] - (ball[:, :3]+approach_offset), axis=1)
-		eef_1_obj_dist = jnp.linalg.norm(eef_1[:, :3] - (ball[:, :3]+approach_offset), axis=1)
-		center_obj_dist = jnp.linalg.norm(center_point - (ball[:, :3]+approach_offset), axis=1)
-		w1 = 0.98
-		w2 = (1-w1)/2
-		eef_obj_dist = jnp.sum(eef_0_obj_dist)*w2 + jnp.sum(eef_1_obj_dist)*w2 + jnp.sum(center_obj_dist)*w1
+		center_obj_dist = jnp.linalg.norm(center_point - (ball[:, :3]-jnp.array([0, 0, 0.05])), axis=1)
+		eef_obj_dist = jnp.sum(center_obj_dist)
+
+		# Equal distance between eefs and object
+		# eef_0_obj_dist = jnp.linalg.norm(eef_0[:, :3] - ball[:, :3], axis=1)
+		# eef_1_obj_dist = jnp.linalg.norm(eef_1[:, :3] - ball[:, :3], axis=1)
+		# dist_eq = jnp.sum((eef_0_obj_dist - eef_1_obj_dist)**2)
 
 		# Push ball to target location
 		obj_goal_dist = jnp.sum(obj_goal_dist)
@@ -728,10 +732,11 @@ class cem_planner():
 			cost_weights['z-axis']*cost_eef_pos +
 			cost_weights['distance']*cost_dist +
 
-			cost_weights['allign']*push_align +
+			# cost_weights['allign']*push_align +
 			cost_weights['orientation']*cost_r +
-			cost_weights['eef_to_obj']*eef_obj_dist 
-			# cost_weights['obj_to_targ']*obj_goal_dist
+			cost_weights['eef_to_obj']*eef_obj_dist +
+			# cost_weights['distance']*2*dist_eq +
+			cost_weights['obj_to_targ']*obj_goal_dist
 		)	
 
 		cost_list = jnp.array([
@@ -827,7 +832,7 @@ class cem_planner():
 		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_0, target_2, cost_weights)
 
 		return carry, (cost_batch, cost_list_batch, thetadot, theta, 
-				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
+				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals, ball)
 	
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_cem(
@@ -855,7 +860,7 @@ class cem_planner():
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)
-		cost_batch, cost_list_batch, thetadot, theta, avg_res_primal, avg_res_fixed, primal_residuals, fixed_point_residuals = out
+		cost_batch, cost_list_batch, thetadot, theta, avg_res_primal, avg_res_fixed, primal_residuals, fixed_point_residuals, ball = out
 
 		idx_min = jnp.argmin(cost_batch[-1])
 		cost = jnp.min(cost_batch, axis=1)
@@ -866,6 +871,8 @@ class cem_planner():
 
 		xi_mean = carry[0]
 		xi_cov = carry[1]
+
+		ball_out = ball[-1][idx_min]
 
 	    
 		return (
@@ -882,4 +889,5 @@ class cem_planner():
 			primal_residuals,
 			fixed_point_residuals,
 			idx_min,
+			ball_out
 		)
