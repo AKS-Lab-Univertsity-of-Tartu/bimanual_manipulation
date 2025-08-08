@@ -98,6 +98,12 @@ class Visualizer(Node):
         self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
         self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
 
+        target_0_rot = quaternion_multiply(quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1])), rotation_quaternion(30, [0, 1, 0]))
+        print(target_0_rot)
+        target_0_rot = quaternion_multiply(quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1])), rotation_quaternion(-30, [0, 1, 0]))
+        print(target_0_rot)
+        self.model.body(name='target_1').quat = target_0_rot
+
 
         self.data = mujoco.MjData(self.model)
 

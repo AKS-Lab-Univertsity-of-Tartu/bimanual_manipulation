@@ -23,9 +23,9 @@ PACKAGE_DIR = get_package_share_directory('real_demo')
 np.set_printoptions(precision=4, suppress=True)
 
 target_positions = np.array([
-    [-0.25, -0.2, 0.3],
-    [-0.25, 0.0, 0.3],
-    [-0.25, -0.1, 0.3],
+    [-0.3, -0.2, 0.25],
+    [-0.2, 0.0, 0.3],
+    [-0.25, 0.1, 0.3],
 ])
 
 class Planner(Node):
@@ -101,13 +101,17 @@ class Planner(Node):
             'distance': 10.0,
 
             'allign': 2.0,
-            'orientation': 1.0,
+            'orientation': 3.0,
             'eef_to_obj': 7.0,
-            'obj_to_targ': 10.0,
+            'obj_to_targ': 50.0,
+
+            'pick': 0,
+            'move': 0
         }
 
         self.grab_pos_thresh = 0.02
         self.grab_rot_thresh = 0.05
+        self.grab_dist_thresh = 0.05
         self.thetadot = np.zeros(self.num_dof)
 
         # Initialize robot connection
@@ -244,19 +248,43 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
 
-        # current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.target_0[:3])
-        current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0, 0.70711, 0.70711, 0]))
-            
-        # current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.target_1[:3])
-        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0, 0.70711, 0.70711, 0]))
 
-        # if self.task=='pick':
-        #     target_reached = (
-        #             current_cost_g_0 < self.grab_pos_thresh \
-        #             and current_cost_r_0 < self.grab_rot_thresh \
-        #             and current_cost_g_1 < self.grab_pos_thresh \
-        #             and current_cost_r_1 < self.grab_rot_thresh
-        #     )
+        center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2
+        cost_g = np.linalg.norm(center_pos - (self.data.xpos[self.model.body(name='ball').id]-np.array([0, 0, 0.05])))
+
+        distances = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
+        cost_dist = (distances - 0.18)**2
+
+        current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.183, -0.683, -0.683, 0.183]))
+        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.183, -0.683, 0.683, -0.183]))
+
+        cost_g_ball = np.linalg.norm(self.data.xpos[self.model.body(name='ball').id] - self.planner.target_0[:3])
+
+
+
+        if self.task=='pick':
+            target_reached = (
+                    cost_g < self.grab_pos_thresh \
+                    and cost_dist < self.grab_dist_thresh \
+                    and current_cost_r_0 < self.grab_rot_thresh \
+                    and current_cost_r_1 < self.grab_rot_thresh
+            )
+
+            if target_reached:
+                self.task = 'move'
+
+        elif self.task == 'move':
+            target_reached = cost_g_ball < 0.05
+            if target_reached:
+                self.planner.target_0[:3] = target_positions[self.target_idx]
+                self.model.body(name="target_0").pos = target_positions[self.target_idx]
+                if self.target_idx<len(target_positions)-2:
+                    self.target_idx+=1
+                
+            if cost_g > 0.05:
+                self.task='pick'
+            
+
         # elif self.task=='move':
         #     target_reached = (
         #             current_cost_g_tray < self.grab_pos_thresh \
@@ -296,10 +324,11 @@ class Planner(Node):
         # Print debug info
         print(f'\n| Task: {self.task} '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
-              f'\n| Cost eef to obj: {"%.2f"%(float(cost_eef_obj))} '
-              f'\n| Cost obj to g: {"%.2f"%(float(cost_obj_g))} '
+              f'\n| Cost eef to obj: {"%.2f, %.2f"%(float(cost_eef_obj), float(cost_g))} '
+              f'\n| Cost obj to g: {"%.2f, %.2f"%(float(cost_obj_g), float(cost_g_ball))} '
               f'\n| Cost r: {"%.2f"%(float(cost_r))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
+              f'\n| Cost dist: {"%.2f"%(float(cost_dist))} '
               f'\n| Cost gr0: {"%.2f"%(float(current_cost_r_0))} '
               f'\n| Cost gr1: {"%.2f"%(float(current_cost_r_1))} '
               f'\n| Cost: {np.round(cost, 2)} ', flush=True)

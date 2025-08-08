@@ -165,7 +165,13 @@ class cem_planner():
 
 		target_geom_id = np.array([mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball')])
 		target_mask = ~jnp.any(jnp.isin(self.mjx_data.contact.geom, target_geom_id), axis=1)
-		self.mask = jnp.logical_and(target_mask, self.mask)
+		self.mask_move = jnp.logical_and(target_mask, self.mask)
+
+		self.mask = jnp.tile(self.mask, (self.num, 1))
+		self.mask_move = jnp.tile(self.mask_move, (self.num, 1))
+
+		print(self.mjx_data.contact.dist.shape)
+		print(self.mask.shape)
 
 
 		self.hande_id_0 = self.model.body(name="hande_0").id
@@ -588,7 +594,8 @@ class cem_planner():
 		eef_1 = jnp.concatenate([eef_pos_1, eef_rot_1])
 		
 		# Collision detection
-		collision = mjx_data.contact.dist[self.mask]
+		# collision = mjx_data.contact.dist[self.mask]
+		collision = mjx_data.contact.dist
 
 		# Set tray position and orientatio
 		ball = jnp.concatenate([mjx_data.xpos[self.ball_id]	, mjx_data.xquat[self.ball_id]])
@@ -658,11 +665,19 @@ class cem_planner():
 
 		''' Common cost for both tasks '''
 
-		# Compute collision cost
+		# Compute collision cost for pick
 		y = 0.15 # Higher y implies stricter condition on g to be positive
-		collision = collision.T
-		g = -collision[:, 1:]+(1 - y)*collision[:, :-1]
-		cost_c = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision < 0)
+		collision_pick = collision[self.mask]
+		collision_pick = collision_pick.reshape((self.num, len(collision_pick)//self.num)).T
+		g = -collision_pick[:, 1:]+(1 - y)*collision_pick[:, :-1]
+		cost_c_pick = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision_pick < 0)
+
+		# Compute collision cost for move
+		y = 0.15 # Higher y implies stricter condition on g to be positive
+		collision_move = collision[self.mask_move]
+		collision_move = collision_move.reshape((self.num, len(collision_move)//self.num)).T
+		g = -collision_move[:, 1:]+(1 - y)*collision_move[:, :-1]
+		cost_c_move = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision_move < 0)
 
 		# Keep arm at all times closer to the initial state
 		cost_theta = jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T - self.init_joint_position)
@@ -677,11 +692,13 @@ class cem_planner():
 		cost_eef_vel = jnp.linalg.norm(dot_products)
 
 		# Move end effectors to correct orientation
-		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, jnp.array([0, 0.70711, 0.70711, 0])/jnp.linalg.norm(jnp.array([0, 0.70711, 0.70711, 0]))))
+		target_rot_0 = jnp.array([0.183, -0.683, -0.683, 0.183])
+		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_0 = 2 * jnp.arccos(dot_product)
 
-		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, jnp.array([0, 0.70711, -0.70711, 0])/jnp.linalg.norm(jnp.array([0, 0.70711, -0.70711, 0]))))
+		target_rot_1 = jnp.array([0.183, -0.683, 0.683, -0.183])
+		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_rot_1/jnp.linalg.norm(target_rot_1)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_1 = 2 * jnp.arccos(dot_product)
 
@@ -704,7 +721,7 @@ class cem_planner():
 
 		# Approach the ball with some offset
 		distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
-		cost_dist = jnp.sum((distances - 0.35)**2)
+		cost_dist = jnp.sum((distances - 0.18)**2)
 
 		# Distance between center point between two eef and object with the offset
 		center_point = (eef_0[:, :3]+eef_1[:, :3])/2
@@ -726,7 +743,8 @@ class cem_planner():
 
 
 		cost = (
-			cost_weights['collision']*cost_c +
+			cost_weights['pick']*cost_weights['collision']*cost_c_pick +
+			cost_weights['move']*cost_weights['collision']*cost_c_move +
 			cost_weights['theta']*cost_theta +
 			cost_weights['velocity']*cost_eef_vel +
 			cost_weights['z-axis']*cost_eef_pos +
@@ -736,14 +754,16 @@ class cem_planner():
 			cost_weights['orientation']*cost_r +
 			cost_weights['eef_to_obj']*eef_obj_dist +
 			# cost_weights['distance']*2*dist_eq +
-			cost_weights['obj_to_targ']*obj_goal_dist
+			cost_weights['move']*cost_weights['obj_to_targ']*obj_goal_dist
 		)	
 
 		cost_list = jnp.array([
-			cost_c, 
+			cost_weights['pick']*cost_weights['collision']*cost_c_pick +
+			cost_weights['move']*cost_weights['collision']*cost_c_move, 
 			cost_weights['orientation']*cost_r,
 			cost_weights['eef_to_obj']*eef_obj_dist , 
-			cost_weights['obj_to_targ']*obj_goal_dist
+			cost_weights['obj_to_targ']*obj_goal_dist, 
+			# cost_weights['distance']*cost_dist
 		])
 
 		return cost, cost_list

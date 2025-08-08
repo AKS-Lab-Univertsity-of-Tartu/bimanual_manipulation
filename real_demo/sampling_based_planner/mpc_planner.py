@@ -209,12 +209,12 @@ class run_cem_planner:
             self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
-        # if task == "pick":
-        #     self.cost_weights['pick'] = 1
-        #     self.cost_weights['move'] = 0
-        # elif task == 'move':
-        #     self.cost_weights['pick'] = 0
-        #     self.cost_weights['move'] = 1
+        if task == "pick":
+            self.cost_weights['pick'] = 1
+            self.cost_weights['move'] = 0
+        elif task == 'move':
+            self.cost_weights['pick'] = 0
+            self.cost_weights['move'] = 1
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
@@ -234,7 +234,7 @@ class run_cem_planner:
         )
 
         # Get mean velocity command (average middle 90% of trajectory)
-        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.3)], axis=0)
+        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.5)], axis=0)
 
         thetadot_0 = thetadot_cem[:6]
         thetadot_1 = thetadot_cem[6:]
