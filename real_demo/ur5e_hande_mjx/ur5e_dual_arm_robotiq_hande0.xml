@@ -108,11 +108,7 @@
 
   <worldbody>
     <body name="table_0" pos="0 0 0" >
-      <geom name="table_geom_0" type="box" size="0.55 0.625 0.025" rgba="0.6 0.4 0.3 1" contype="0" conaffinity="0"/>
-      <body name="table_0_joint" pos="0 0 0" gravcomp="1" >
-        <geom name="table_geom_0_col" type="box" size="0.55 0.625 0.025" rgba="0.6 0 0 0.5" contype="2097152" conaffinity="57365"/>
-        <joint type="slide" axis="0 0 1" range="0 0"/>
-      </body>
+      <geom name="table_geom_0" type="box" size="0.55 0.625 0.025" rgba="0.6 0.4 0.3 1" contype="2097152" conaffinity="57365"/>
 
       <body name="base_1" quat="1 0 0 1" childclass="ur5e" pos="0.37 0 0.161" gravcomp="1">
         <geom mesh="base_0" material="black" class="visual"/>
@@ -203,11 +199,7 @@
     </body>
 
     <body name="table_1" pos="-0.771 0.0 0" >
-      <geom name="table_geom_1" type="box" size="0.225 0.375 0.025" rgba="0.6 0.4 0.3 1" contype="0" conaffinity="0"/>
-      <body name="table_1_joint" pos="0 0 0" gravcomp="1">
-        <geom name="table_geom_1_col" type="box" size="0.225 0.375 0.025" rgba="0.6 0 0 0.5" contype="4096" conaffinity="21"/>
-        <joint type="slide" axis="0 0 1" range="0 0"/>
-      </body>
+      <geom name="table_geom_1" type="box" size="0.225 0.375 0.025" rgba="0.6 0.4 0.3 1" contype="4096" conaffinity="21"/>
 
       <body name="base_2" quat="1 0 0 1" childclass="ur5e" pos="-0.100 -0.308 0.025" gravcomp="1">
         <geom mesh="base_0" material="black" class="visual"/>
@@ -355,14 +347,15 @@
 
 
   <equality>
-    <weld body1="table_0" body2="table_0_joint"/>
-    <weld body1="table_1" body2="table_1_joint"/>
-  </equality>
+    <weld name="grasp_0" site1="object_0_site_0" site2="tcp_0" active="false"/>
+    <weld name="grasp_1" site1="object_0_site_1" site2="tcp_1" active="false"/>
+</equality>
 
+<!-- 
   <actuator>
     <position name="slide_x" joint="slide_x" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>
     <position name="slide_y" joint="slide_y" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>
     <position name="slide_z" joint="slide_z" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>
-  </actuator> 
+  </actuator>  -->
 
 </mujoco>

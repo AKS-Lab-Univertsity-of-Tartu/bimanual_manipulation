@@ -101,14 +101,14 @@ class Visualizer(Node):
 
         self.data = mujoco.MjData(self.model)
 
-        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
-        target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
+        # target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
+        # target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
         # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
 
-        self.model.body(name='target_0').quat = target_0_rot
-        self.model.body(name='target_1').quat = target_1_rot
-        self.model.body(name='target_00').quat = target_0_rot
-        self.model.body(name='target_11').quat = target_1_rot
+        # self.model.body(name='target_0').quat = target_0_rot
+        # self.model.body(name='target_1').quat = target_1_rot
+        # self.model.body(name='target_00').quat = target_0_rot
+        # self.model.body(name='target_11').quat = target_1_rot
         # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
 
         mujoco.mj_forward(self.model, self.data)
@@ -181,17 +181,6 @@ class Visualizer(Node):
     def view_model(self):
         step_start = time.time()
 
-        # tray_target_pos = np.array([
-        #     self.data.qpos[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'slide_x')],
-        #     self.data.qpos[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'slide_y')],
-        #     self.data.qpos[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, 'slide_z')]
-        # ])
-
-        tray_target_pos = self.data.xpos[self.model.body(name='tray_mocap_target').id]
-
-
-        print(f"Tray pos: {tray_target_pos}", flush=True)
-
         if self.use_hardware:
             theta_1 = self.rtde_r_0.getActualQ()
             theta_2 = self.rtde_r_1.getActualQ()
@@ -210,20 +199,11 @@ class Visualizer(Node):
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
 
-        target_0 = np.concatenate([
-            self.model.body(name='target_0').pos,
-            self.model.body(name='target_0').quat
-        ])
-        target_1 = np.concatenate([
-            self.model.body(name='target_1').pos,
-            self.model.body(name='target_1').quat
-        ])
-
         if self.record_data_:    
             self.data_buffers['theta'].append(theta.copy())
             self.data_buffers['thetadot'].append(thetadot.copy())
-            self.data_buffers['target_0'].append(target_0.copy())
-            self.data_buffers['target_1'].append(target_1.copy())
+            # self.data_buffers['target_0'].append(target_0.copy())
+            # self.data_buffers['target_1'].append(target_1.copy())
             self.data_buffers['timestamp'].append(time.time())
 
         time_until_next_step = self.model.opt.timestep - (time.time() - step_start)
