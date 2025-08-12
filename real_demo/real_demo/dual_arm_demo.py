@@ -181,23 +181,41 @@ class Planner(Node):
         self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
 
         # Set the table positions alligmed with the motion capture coordinate system
-        if self.use_hardware:
-            setup = np.load(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.npz'), allow_pickle=True)
 
-            marker_pos = setup['setup'][0][1]
-            marker_diff = marker_pos-self.model.body(name='table0_marker').pos
+        # setup = np.load(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.npz'), allow_pickle=True)
 
-            self.model.body(name='table_0').pos = setup['setup'][0][0]
-            self.model.body(name='table0_marker').pos = setup['setup'][0][1]
-            self.model.body(name='table_1').pos = setup['setup'][0][2]
-            self.model.body(name='table1_marker').pos = setup['setup'][0][3]
+        # marker_pos = setup['setup'][0][1]
+        # marker_diff = marker_pos-self.model.body(name='table0_marker').pos
 
-            self.model.body(name='tray').pos += marker_diff
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
-        else:
-            table_0_pos = self.model.body(name='table_0').pos
-            table_1_pos = self.model.body(name='table_1').pos
+        # self.model.body(name='table_0').pos = setup['setup'][0][0]
+        # self.model.body(name='table0_marker').pos = setup['setup'][0][1]
+        # self.model.body(name='table_1').pos = setup['setup'][0][2]
+        # self.model.body(name='table1_marker').pos = setup['setup'][0][3]
+
+        # self.model.body(name='tray').pos += marker_diff
+        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
+        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
+
+        table_0_pos = self.model.body(name='table_0').pos
+        table_1_pos = self.model.body(name='table_1').pos
+
+        # if self.use_hardware:
+        #     setup = np.load(os.path.join(PACKAGE_DIR, 'data', 'manual', 'setup', f'setup_000.npz'), allow_pickle=True)
+
+        #     marker_pos = setup['setup'][0][1]
+        #     marker_diff = marker_pos-self.model.body(name='table0_marker').pos
+
+        #     self.model.body(name='table_0').pos = setup['setup'][0][0]
+        #     self.model.body(name='table0_marker').pos = setup['setup'][0][1]
+        #     self.model.body(name='table_1').pos = setup['setup'][0][2]
+        #     self.model.body(name='table1_marker').pos = setup['setup'][0][3]
+
+        #     self.model.body(name='tray').pos += marker_diff
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
+        # else:
+        #     table_0_pos = self.model.body(name='table_0').pos
+        #     table_1_pos = self.model.body(name='table_1').pos
 
         mujoco.mj_forward(self.model, self.data)
 

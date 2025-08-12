@@ -125,7 +125,7 @@ class cem_planner():
 		self.model.body(name='table_0').pos = table_0_pos
 		self.model.body(name='table_1').pos = table_1_pos
 
-		self.tray_dim = 0.34
+		self.tray_dim = 0.30
 		self.tray_quat = jnp.array([0,0,0,1])
 
 		self.mjx_model = mjx.put_model(self.model)
