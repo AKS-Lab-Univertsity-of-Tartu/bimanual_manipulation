@@ -169,7 +169,7 @@ class run_cem_planner:
         self.obstacle_pos = obstacle_pos
         self.obstacle_rot = obstacle_rot
         
-    def compute_control(self, current_pos, current_vel, task):
+    def compute_control(self, current_pos, current_vel, task, gripper_0, gripper_1):
         """Compute optimal control using CEM/MPC for dual-arm system"""
         
         # Handle covariance matrix numerical stability
@@ -220,6 +220,8 @@ class run_cem_planner:
             self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
+        grippers = np.array([gripper_0, gripper_1])
+
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
@@ -234,7 +236,8 @@ class run_cem_planner:
             self.s_init,
             self.xi_samples,
             self.cost_weights,
-            self.obj_init
+            self.obj_init,
+            grippers
         )
 
         # Get mean velocity command (average middle 90% of trajectory)

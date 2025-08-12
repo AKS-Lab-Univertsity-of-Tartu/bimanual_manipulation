@@ -5,11 +5,11 @@
 <!-- For example, quat = [0.0, 1.0, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from top -->
 
 
-    <body name="object_0" pos="-0.8 0.2 0.13" quat="1 0 0 0">
+    <body name="object_0" pos="-0.8 0.2 0.13" quat="1 0 0 0" gravcomp="1">
         <joint name="object_0" type="free"/>
-        <site name="object_0_site_0" pos="0.025 0 0" quat="0 -0.7071 -0.7071 0"/>
-        <site name="object_0_site_1" pos="-0.025 0 0" quat="0 -0.7071 0.7071 0"/>
-        <geom name="object_0" pos="0 0 0" rgba="0 0.6 0 1" size="0.05 0.015 0.02" type="box" contype="0" conaffinity="2158716"/>
+        <site name="object_0_site_0" pos="0.04 0 0" quat="0 -0.7071 -0.7071 0"/>
+        <site name="object_0_site_1" pos="-0.04 0 0" quat="0 -0.7071 0.7071 0"/>
+        <geom name="object_0" pos="0 0 0" rgba="0 0.6 0 1" size="0.08 0.015 0.02" mass="0.5" type="box" contype="0" conaffinity="2158716"/>
     </body>
 
     <body name="target_0" pos="0.0 0.2 0.3" quat="1 0 0 0">

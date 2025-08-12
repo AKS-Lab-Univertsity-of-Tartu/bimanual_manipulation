@@ -99,8 +99,8 @@ class Planner(Node):
         self.task = 'pick'
         self.target_idx = 0
         self.grasp = None
-        self.weld_id_0 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_0")
-        self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
+        self.gripper_0 = 0
+        self.gripper_1 = 0
 
         cost_weights = {
             'collision': 500,
@@ -111,10 +111,10 @@ class Planner(Node):
             'orientation': 1,
 
             'position_obj': 5.0,
-            'orientation_obj': 2,
+            'orientation_obj': 2.0,
         }
 
-        self.grab_pos_thresh = 0.02
+        self.grab_pos_thresh = 0.05
         self.grab_rot_thresh = 0.05
         self.thetadot = np.zeros(self.num_dof)
 
@@ -166,6 +166,9 @@ class Planner(Node):
         self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+
+        self.weld_id_0 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_0")
+        self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
 
         # Set the table positions alligmed with the motion capture coordinate system
         if self.use_hardware:
@@ -254,7 +257,7 @@ class Planner(Node):
         
         
         # Compute control
-        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel, self.task)
+        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel, self.task, self.gripper_0, self.gripper_1)
         
         if self.use_hardware:
             # Send velocity command
@@ -284,21 +287,31 @@ class Planner(Node):
 
         if self.grasp == None:
             if grasp_0:
-                self.model.eq_active[self.weld_id_0] = 1
+                self.data.eq_active[self.weld_id_0] = 1
                 self.grasp == 0
+                self.gripper_0 = 1
+                print(f"GRASP 0")
             elif grasp_1:
-                self.model.eq_active[self.weld_id_1] = 1
+                self.data.eq_active[self.weld_id_1] = 1
                 self.grasp == 1
+                self.gripper_1 = 1
+                print(f"GRASP 1")
         elif self.grasp == 0:
             if grasp_1:
-                self.model.eq_active[self.weld_id_0] = 0
-                self.model.eq_active[self.weld_id_1] = 1
+                self.data.eq_active[self.weld_id_0] = 0
+                self.data.eq_active[self.weld_id_1] = 1
                 self.grasp == 1
+                self.gripper_0 = 0
+                self.gripper_1 = 1
+                print(f"GRASP 1")
         elif self.grasp == 1:
             if grasp_0:
-                self.model.eq_active[self.weld_id_0] = 1
-                self.model.eq_active[self.weld_id_1] = 0
+                self.data.eq_active[self.weld_id_0] = 1
+                self.data.eq_active[self.weld_id_1] = 0
                 self.grasp == 0
+                self.gripper_0 = 1
+                self.gripper_1 = 0
+                print(f"GRASP 0")
             
 
 
@@ -324,12 +337,12 @@ class Planner(Node):
         # Print debug info
         print(f'\n| Task: {self.task} '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
-              f'\n| Cost eq: {"%.2f"%(float(cost_dist))} '
               f'\n| Cost g: {"%.2f"%(float(cost_g))} '
-              f'\n| Cost r: {"%.2f"%(float(cost_r))} '
+              f'\n| Cost g obj: {"%.2f"%(float(cost_dist))} '
+              f'\n| Cost r obj: {"%.2f"%(float(cost_r))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
-            #   f'\n| Cost gr0: {"%.2f, %.2f"%(float(current_cost_g_0), float(current_cost_r_0))} '
-            #   f'\n| Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} '
+              f'\n| Cost gr0: {"%.2f, %.2f"%(float(current_cost_g_0), float(current_cost_r_0))} '
+              f'\n| Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} '
             #   f'\n| Cost tr: {"%.2f, %.2f"%(float(current_cost_g_tray), float(current_cost_r_tray))} '
               f'\n| Cost: {np.round(cost, 2)} ', flush=True)
         

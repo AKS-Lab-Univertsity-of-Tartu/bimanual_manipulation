@@ -349,7 +349,7 @@
   <equality>
     <weld name="grasp_0" site1="object_0_site_0" site2="tcp_0" active="false"/>
     <weld name="grasp_1" site1="object_0_site_1" site2="tcp_1" active="false"/>
-</equality>
+  </equality>
 
 <!-- 
   <actuator>

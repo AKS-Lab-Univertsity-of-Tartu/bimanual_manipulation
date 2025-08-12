@@ -174,10 +174,13 @@ class cem_planner():
 
 		self.obj_qpos_idx = self.mjx_model.body_dofadr[self.model.body(name="object_0").id]
 
+		self.weld_id_0 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_0")
+		self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
+
 		# self.tray_0_id = self.model.body(name="target_0").id
 		# self.tray_1_id = self.model.body(name="target_1").id
 
-		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None))
+		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None, None))
 		self.compute_boundary_vec_batch_single_dof = (jax.vmap(self.compute_boundary_vec_single_dof, in_axes = (0)  )) # vmap parrallelization takes place over first axis
 		self.compute_projection_batched_over_dof = jax.vmap(self.compute_projection_single_dof, in_axes=(0, 0, 0, 0, 0)) # vmap parrallelization takes place over first axis
@@ -621,13 +624,16 @@ class cem_planner():
 
 
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_rollout_single(self, thetadot, init_pos, init_vel, obj_init):
+	def compute_rollout_single(self, thetadot, init_pos, init_vel, obj_init, grippers):
 
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
 		qpos = qpos.at[self.obj_qpos_idx : self.obj_qpos_idx + 7].set(obj_init)
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
+		eq_active = mjx_data.eq_active.at[self.weld_id_0].set(grippers[0])
+		eq_active = eq_active.at[self.weld_id_1].set(grippers[1])
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, eq_active=eq_active)
+
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
@@ -661,7 +667,8 @@ class cem_planner():
 		# cost_g_0 = jnp.where(cost_g_0 > 0.5, 0, cost_g_0)
 		cost_g_1 = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - obj_1[:, :3], axis=1))
 		# cost_g_1 = jnp.where(cost_g_1 > 0.5, 0, cost_g_1)
-		cost_g = jnp.min(jnp.array([cost_g_0, cost_g_1]))*0.8 + jnp.max(jnp.array([cost_g_0, cost_g_1]))*0.2
+		# cost_g = jnp.min(jnp.array([cost_g_0, cost_g_1]))*0.8 + jnp.max(jnp.array([cost_g_0, cost_g_1]))*0.2
+		cost_g = (cost_g_0+cost_g_1)/2
 
 		# Move end effectors to pick orientation
 		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, (obj_0[:, 3:]/jnp.linalg.norm(obj_0[:, 3:], axis=1).reshape(1, self.num).T).T))
@@ -698,8 +705,8 @@ class cem_planner():
 
 		cost_list = jnp.array([
 			cost_c, 
-			cost_weights['orientation']*cost_r,
-			cost_weights['position']*cost_g+cost_weights['position_obj']*cost_g_obj, 
+			cost_weights['position_obj']*cost_g_obj,
+			cost_weights['position']*cost_g, 
 			cost_weights['orientation_obj']*cost_r_obj
 
 		])
@@ -741,7 +748,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def cem_iter(self, carry,  scan_over):
 
-		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, obj_init, cost_weights = carry
+		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, obj_init, cost_weights, grippers = carry
 
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
@@ -780,14 +787,14 @@ class cem_planner():
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
 
 
-		theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, obj, obj_0, obj_1, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, obj_init)
+		theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, obj, obj_0, obj_1, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, obj_init, grippers)
 		cost_batch, cost_list_batch = self.compute_cost_batch(theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, obj, obj_0, obj_1, collision, target_0, cost_weights)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_0, obj_init, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_0, obj_init, cost_weights, grippers)
 
 		return carry, (cost_batch, cost_list_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals)
@@ -804,7 +811,8 @@ class cem_planner():
 		s_init,
 		xi_samples,
 		cost_weights,
-		obj_init
+		obj_init,
+		grippers
 		):
 
 
@@ -814,7 +822,7 @@ class cem_planner():
 		
 		key, subkey = jax.random.split(self.key)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, obj_init, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, obj_init, cost_weights, grippers)
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)
