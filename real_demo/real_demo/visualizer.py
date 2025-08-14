@@ -112,7 +112,7 @@ class Visualizer(Node):
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
 
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-        self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+        # self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         if self.use_hardware:
             self.viewer.cam.lookat[:] = [-3.0, 0.0, 0.8]     
         else:
@@ -212,27 +212,19 @@ class Visualizer(Node):
 
         theta = self.data_files['trajectory']['theta'][self.step_idx]
         thetadot = self.data_files['trajectory']['thetadot'][self.step_idx]
-        theta_horizon = self.data_files['trajectory']['theta_planned'][self.step_idx]
+        # theta_horizon = self.data_files['trajectory']['theta_planned'][self.step_idx]
 
+        # target_0 = self.data_files['trajectory']['target_0'][self.step_idx]
         target_0 = self.data_files['trajectory']['target_0'][self.step_idx]
-        target_1 = self.data_files['trajectory']['target_1'][self.step_idx]
+        # target_1 = self.data_files['trajectory']['target_1'][self.step_idx]
 
         self.data.qpos[self.joint_mask_pos] = theta
+        self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+        self.data.qvel[self.joint_mask_vel] = thetadot
 
-        if self.step_idx >= 40:
-            eef_pos_0 = self.data.site_xpos[self.tcp_id_0]
-            eef_pos_1 = self.data.site_xpos[self.tcp_id_1]
-
-            tray_pos = (eef_pos_0+eef_pos_1)/2 - np.array([0, 0, 0.1])
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
-
-            tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
-
-            tray_0_pos = self.data.xpos[self.model.body(name='target_0').id]
-            tray_1_pos = self.data.xpos[self.model.body(name='target_1').id]
-            tray_rot = turn_quat(tray_0_pos, tray_1_pos, eef_pos_0, eef_pos_1, tray_rot_init)
-
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
+        self.data.xpos[self.model.body(name="target_0").id] = target_0[:3]
+        # self.data.xpos[self.model.body(name="ball").id] = target_1[:3]
+        # print(self.data.xpos[self.model.body(name="ball").id], flush=True)
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
@@ -243,8 +235,6 @@ class Visualizer(Node):
             self.step_idx = 0
             self.data.qpos[self.joint_mask_pos] = self.init_joint_position
             self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_pos
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_quat
             mujoco.mj_step(self.model, self.data)
             self.viewer.sync()
 

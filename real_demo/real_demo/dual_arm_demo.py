@@ -23,9 +23,10 @@ PACKAGE_DIR = get_package_share_directory('real_demo')
 np.set_printoptions(precision=4, suppress=True)
 
 target_positions = np.array([
-    [-0.3, -0.2, 0.25],
     [-0.2, 0.0, 0.3],
     [-0.25, 0.1, 0.3],
+    [-0.3, -0.2, 0.25],
+    [-0.25, -0.25, 0.3]
 ])
 
 class Planner(Node):
@@ -195,7 +196,7 @@ class Planner(Node):
         
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-        self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+        # self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         self.viewer.cam.lookat[:] = self.model.body(name='table_0').pos
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
@@ -278,8 +279,10 @@ class Planner(Node):
             if target_reached:
                 self.planner.target_0[:3] = target_positions[self.target_idx]
                 self.model.body(name="target_0").pos = target_positions[self.target_idx]
-                if self.target_idx<len(target_positions)-2:
+                if self.target_idx<len(target_positions)-1:
                     self.target_idx+=1
+                else:
+                    self.target_idx = 0
                 
             if cost_g > 0.05:
                 self.task='pick'
@@ -307,10 +310,10 @@ class Planner(Node):
             theta = self.data.qpos[self.joint_mask_pos]
             self.data_buffers['theta'].append(theta.copy())
             self.data_buffers['thetadot'].append(self.thetadot.copy())
-            self.data_buffers['theta_planned'].append(theta_horizon.copy())
-            self.data_buffers['thetadot_planned'].append(thetadot_horizon.copy())
+            # self.data_buffers['theta_planned'].append(theta_horizon.copy())
+            # self.data_buffers['thetadot_planned'].append(thetadot_horizon.copy())
             self.data_buffers['target_0'].append(self.planner.target_0.copy())
-            self.data_buffers['target_1'].append(self.planner.target_1.copy())
+            self.data_buffers['target_1'].append(self.planner.target_2.copy())
             # self.data_buffers['theta_planned_batched'].append(th_batch[0].reshape((self.num_batch, self.num_dof, self.num_steps)).copy())
             # self.data_buffers['thetadot_planned_batched'].append(thd_batch[0].reshape((self.num_batch, self.num_dof, self.num_steps)).copy())
             # self.data_buffers['cost_cgr_batched'].append(cost_list_batch[0].copy())
