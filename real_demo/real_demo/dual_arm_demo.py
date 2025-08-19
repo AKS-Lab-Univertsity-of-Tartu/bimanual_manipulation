@@ -104,17 +104,17 @@ class Planner(Node):
 
         cost_weights = {
             'collision': 500,
-			'theta': 0.3,
-            'velocity': 0.1,
+			'theta': 1,
 
             'position': 3.0,
             'orientation': 1,
 
-            'position_obj': 5.0,
-            'orientation_obj': 2.0,
+            'pick': 0,
+            'pass': 0,
+            'place': 0,
         }
 
-        self.grab_pos_thresh = 0.05
+        self.grab_pos_thresh = 0.02
         self.grab_rot_thresh = 0.05
         self.thetadot = np.zeros(self.num_dof)
 
@@ -282,39 +282,54 @@ class Planner(Node):
         current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.site_xpos[self.model.site(name="object_0_site_1").id])
         current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_1").id]))
 
+        obj_targ_g = np.linalg.norm(self.data.xpos[self.model.body(name='object_0').id] - self.data.xpos[self.model.body(name='target_0').id])
+        obj_targ_r =  quaternion_distance(self.data.xquat[self.model.body(name='object_0').id], self.data.xquat[self.model.body(name='target_0').id])
+
         grasp_0 = (current_cost_g_0 < self.grab_pos_thresh and current_cost_r_0 < self.grab_rot_thresh)
         grasp_1 = (current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh)
 
-        if self.grasp == None:
+        target_reached_pick = (
+            np.min([current_cost_g_0, current_cost_g_1]) < self.grab_pos_thresh \
+            and current_cost_r_0 < self.grab_rot_thresh \
+            and current_cost_r_1 < self.grab_rot_thresh
+        )
+        target_reached_pass = (
+            current_cost_g_0 < self.grab_pos_thresh \
+            and current_cost_g_1 < self.grab_pos_thresh \
+            and current_cost_r_0 < self.grab_rot_thresh \
+            and current_cost_r_1 < self.grab_rot_thresh
+        )
+        target_reached_place = (
+            obj_targ_g < self.grab_pos_thresh \
+            and obj_targ_r < self.grab_rot_thresh 
+        )
+
+        if self.task=='pick' and target_reached_pick:
+            self.task = 'pass'
             if grasp_0:
                 self.data.eq_active[self.weld_id_0] = 1
-                self.grasp == 0
                 self.gripper_0 = 1
-                print(f"GRASP 0")
             elif grasp_1:
                 self.data.eq_active[self.weld_id_1] = 1
-                self.grasp == 1
                 self.gripper_1 = 1
-                print(f"GRASP 1")
-        elif self.grasp == 0:
-            if grasp_1:
+        elif self.task=='pass' and target_reached_pass:
+            self.task = 'place'
+            if self.gripper_0:
                 self.data.eq_active[self.weld_id_0] = 0
                 self.data.eq_active[self.weld_id_1] = 1
-                self.grasp == 1
                 self.gripper_0 = 0
                 self.gripper_1 = 1
-                print(f"GRASP 1")
-        elif self.grasp == 1:
-            if grasp_0:
+            elif self.gripper_1:
                 self.data.eq_active[self.weld_id_0] = 1
                 self.data.eq_active[self.weld_id_1] = 0
-                self.grasp == 0
                 self.gripper_0 = 1
                 self.gripper_1 = 0
-                print(f"GRASP 0")
+        elif self.task=='place' and target_reached_place:
+            self.data.eq_active[self.weld_id_0] = 0
+            self.data.eq_active[self.weld_id_1] = 0
+            self.gripper_0 = 0
+            self.gripper_1 = 0
             
-
-
 
         if self.record_data_:    
             theta = self.data.qpos[self.joint_mask_pos]
@@ -332,14 +347,14 @@ class Planner(Node):
         # Update viewer
         self.viewer.sync()
 
-        cost_c, cost_dist, cost_g, cost_r = cost_list
+        cost_c, cost_theta, cost_g, cost_r = cost_list
         
         # Print debug info
         print(f'\n| Task: {self.task} '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
               f'\n| Cost g: {"%.2f"%(float(cost_g))} '
-              f'\n| Cost g obj: {"%.2f"%(float(cost_dist))} '
-              f'\n| Cost r obj: {"%.2f"%(float(cost_r))} '
+              f'\n| Cost theta: {"%.2f"%(float(cost_theta))} '
+              f'\n| Cost r: {"%.2f"%(float(cost_r))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
               f'\n| Cost gr0: {"%.2f, %.2f"%(float(current_cost_g_0), float(current_cost_r_0))} '
               f'\n| Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} '

@@ -220,7 +220,20 @@ class run_cem_planner:
             self.lamda_init = np.array(lamda_init_nn_output.cpu().detach().numpy())
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
-        grippers = np.array([gripper_0, gripper_1])
+        grippers = np.array([gripper_0, gripper_1], dtype=np.uint8)
+
+        if task=="pick":
+            self.cost_weights['pick'] = 1
+            self.cost_weights['pass'] = 0
+            self.cost_weights['place'] = 0
+        elif task=="pass":
+            self.cost_weights['pick'] = 0
+            self.cost_weights['pass'] = 1
+            self.cost_weights['place'] = 0
+        elif task=="place":
+            self.cost_weights['pick'] = 0
+            self.cost_weights['pass'] = 0
+            self.cost_weights['place'] = 1
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
