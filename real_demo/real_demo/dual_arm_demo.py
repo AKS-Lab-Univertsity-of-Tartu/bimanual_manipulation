@@ -104,7 +104,7 @@ class Planner(Node):
             'allign': 2.0,
             'orientation': 5.0,
             'eef_to_obj': 10.0,
-            'obj_to_targ': 7.0,
+            'obj_to_targ': 1.0,
 
             'pick': 0,
             'move': 0
@@ -301,13 +301,13 @@ class Planner(Node):
             target_reached = cost_g_ball < 0.05
             if target_reached:
                 print("======================= TARGET REACHED =======================", flush=True)
-                self.planner.target_0[:3] = target_positions[self.target_idx]
+                # self.planner.target_0[:3] = target_positions[self.target_idx]
                 # self.model.body(name="target_0").pos = target_positions[self.target_idx]
-                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = target_positions[self.target_idx]
-                if self.target_idx<len(target_positions)-1:
-                    self.target_idx+=1
-                else:
-                    self.target_idx = 0
+                # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = target_positions[self.target_idx]
+                # if self.target_idx<len(target_positions)-1:
+                #     self.target_idx+=1
+                # else:
+                #     self.target_idx = 0
                 
             if cost_g > 0.05:
                 self.task='pick'

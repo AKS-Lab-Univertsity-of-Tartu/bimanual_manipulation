@@ -752,7 +752,7 @@ class cem_planner():
 		# dist_eq = jnp.sum((eef_0_obj_dist - eef_1_obj_dist)**2)
 
 		# Push ball to target location
-		obj_goal_dist = jnp.sum(obj_goal_dist)
+		obj_goal_dist = jnp.sum(obj_goal_dist*jnp.linspace(0, 1, self.num))
 
 
 		cost = (

@@ -346,11 +346,9 @@
   </worldbody>
 
 
-  <equality>
+  <!-- <equality>
     <weld name="tray" body1="target_0" body2="walls" active="true"/>
-    <!-- <weld body1="walls" body2="wall_0"/>
-    <weld body1="walls" body2="wall_1"/> -->
-  </equality>
+  </equality> -->
 
 
   <!-- <actuator>
