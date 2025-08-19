@@ -4,8 +4,10 @@
 <!-- For example, quat = [0.7071, 0.7071, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from a side -->
 <!-- For example, quat = [0.0, 1.0, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from top -->
 
-    <body name="target_0" pos="-0.25 -0.25 0.3" quat="1 0 0 0">
+    <body mocap="true" name="target_0" pos="-0.25 -0.25 0.3" quat="1 0 0 0">
         <geom name="target_0" rgba="1 1 1 0.2" size="0.1 0.1 0.1" type="box" contype="0" conaffinity="0"/>
+        <geom name="wall_00" pos="0 0 0.15" rgba="0.6 0 0 0.1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/>
+        <geom name="wall_11" pos="0 0 -0.15" rgba="0.6 0 0 0.1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/>
     </body>
 
     <!-- <body name="target_1" pos="-0.25 -0.25 0.3" quat="1 0 0 0">
@@ -15,19 +17,16 @@
         <geom name="target_1" rgba="0 1 0 0.2" size="0.01 0.01 0.01" type="box" contype="0" conaffinity="0"/>
     </body> -->
 
-    <body name="ball" pos="-0.25 -0.1 0.3" quat="1 0 0 0" >
+    <body name="ball" pos="-0.25 0 0.3" quat="1 0 0 0" >
         <joint type="free" damping="0.007" name="free_joint_0"/>
-        <geom name="ball" pos="0 0 0" rgba="0 0.6 0 1" size="0.1" type="sphere" mass="0.1" contype="0" conaffinity="2158716"/>
+        <geom name="ball" pos="0 0 0" rgba="0 0.6 0 1" size="0.1" type="sphere" mass="0.1" contype="0" conaffinity="2158718"/>
     </body>
 
-    <!-- <body name="wall_0" pos="-0.4 -0.25 0.13" quat="1 0 0 0">
-        <joint name="wall_0" type="slide" axis="0 0 1" range="0 0"/>
-        <geom name="wall_0" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="0" conaffinity="61565"/>
+    <body name="walls" pos="-0.25 -0.25 0.3" quat="1 0 0 0" gravcomp="1">
+        <joint name="walls" type="free"/>
+        <geom name="wall_0" pos="0 0 0.15" rgba="0.6 0 0 1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/>
+        <geom name="wall_1" pos="0 0 -0.15" rgba="0.6 0 0 1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/>
     </body>
-    <body name="wall_1" pos="-0.1 -0.25 0.13" quat="1 0 0 0">
-        <joint name="wall_1" type="slide" axis="0 0 1" range="0 0"/>
-        <geom name="wall_1" pos="0 0 0" rgba="0.6 0 0 1" size="0.01 0.1 0.1" type="box" contype="0" conaffinity="61565"/>
-    </body> -->
 
     <!-- <body name="box" pos="-0.3 0.2 0.13" quat="1 0 0 0">
         <joint name="box" type="free"/>

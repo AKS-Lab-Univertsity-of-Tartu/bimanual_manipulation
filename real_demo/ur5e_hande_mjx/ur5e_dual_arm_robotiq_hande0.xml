@@ -346,6 +346,13 @@
   </worldbody>
 
 
+  <equality>
+    <weld name="tray" body1="target_0" body2="walls" active="true"/>
+    <!-- <weld body1="walls" body2="wall_0"/>
+    <weld body1="walls" body2="wall_1"/> -->
+  </equality>
+
+
   <!-- <actuator>
     <position name="slide_x" joint="slide_x" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>
     <position name="slide_y" joint="slide_y" kp="100" ctrlrange="-0.5 0.5" ctrllimited="true"/>

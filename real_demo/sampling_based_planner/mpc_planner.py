@@ -219,7 +219,7 @@ class run_cem_planner:
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
         self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
-        primal_res, fixed_res, idx_min, ball_out = self.cem.compute_cem(
+        primal_res, fixed_res, idx_min, ball_out, eef_0_planned, eef_1_planned = self.cem.compute_cem(
             self.xi_mean,
             self.xi_cov,
             current_pos,
@@ -273,4 +273,4 @@ class run_cem_planner:
         # Combine control commands
         thetadot = np.concatenate((thetadot_0, thetadot_1))
         
-        return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon
+        return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon, eef_0_planned, eef_1_planned

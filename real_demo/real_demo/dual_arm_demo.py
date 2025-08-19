@@ -24,8 +24,8 @@ np.set_printoptions(precision=4, suppress=True)
 
 target_positions = np.array([
     [-0.2, 0.0, 0.3],
-    [-0.25, 0.1, 0.3],
-    [-0.3, -0.2, 0.25],
+    [-0.22, 0.1, 0.25],
+    [-0.25, -0.2, 0.3],
     [-0.25, -0.25, 0.3]
 ])
 
@@ -97,14 +97,14 @@ class Planner(Node):
         cost_weights = {
             'collision': 500,
 			'theta': 0.3,
-			'z-axis': 10.0,
+			'z-axis': 20.0,
             'velocity': 0.1,
-            'distance': 10.0,
+            'distance': 20.0,
 
             'allign': 2.0,
-            'orientation': 3.0,
-            'eef_to_obj': 7.0,
-            'obj_to_targ': 50.0,
+            'orientation': 5.0,
+            'eef_to_obj': 10.0,
+            'obj_to_targ': 7.0,
 
             'pick': 0,
             'move': 0
@@ -210,6 +210,28 @@ class Planner(Node):
         # Start control timer
         self.timer = self.create_timer(self.timestep, self.control_loop)
 
+    def render_trace(self, viewer_, *eef_trace_positions):
+
+        """Render the end-effector trajectory trace in the viewer."""
+        # Clear any existing overlay geoms
+        viewer_.user_scn.ngeom = 0
+        for trace in eef_trace_positions:
+            # Add spheres for each position in the trace
+            for pos in trace:
+                # Create a new geom in the user scene
+                geom_id = viewer_.user_scn.ngeom
+                viewer_.user_scn.ngeom += 1
+    
+                # Initialize the geom properties
+                mujoco.mjv_initGeom(
+                    viewer_.user_scn.geoms[geom_id],
+                    type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                    size=[0.01, 0.01, 0.01],  # radius 1 cm sphere
+                    pos=pos,
+                    mat=np.eye(3).flatten(),
+                    rgba=[0, 0, 1, 0.5]  
+                )
+
     def control_loop(self):
         """Main control loop running at fixed interval"""
         start_time = time.time()
@@ -230,7 +252,7 @@ class Planner(Node):
         
         
         # Compute control
-        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel, self.task)
+        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon, eef_0_planned, eef_1_planned = self.planner.compute_control(current_pos, current_vel, self.task)
         
         if self.use_hardware:
             # Send velocity command
@@ -249,6 +271,7 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
 
+        self.render_trace(self.viewer, eef_0_planned[:,:3], eef_1_planned[:,:3])
 
         center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2
         cost_g = np.linalg.norm(center_pos - (self.data.xpos[self.model.body(name='ball').id]-np.array([0, 0, 0.05])))
@@ -277,8 +300,10 @@ class Planner(Node):
         elif self.task == 'move':
             target_reached = cost_g_ball < 0.05
             if target_reached:
+                print("======================= TARGET REACHED =======================", flush=True)
                 self.planner.target_0[:3] = target_positions[self.target_idx]
-                self.model.body(name="target_0").pos = target_positions[self.target_idx]
+                # self.model.body(name="target_0").pos = target_positions[self.target_idx]
+                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = target_positions[self.target_idx]
                 if self.target_idx<len(target_positions)-1:
                     self.target_idx+=1
                 else:
