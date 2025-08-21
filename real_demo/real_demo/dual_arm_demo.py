@@ -104,14 +104,15 @@ class Planner(Node):
 
         cost_weights = {
             'collision': 500,
-			'theta': 1,
+			'theta': 1.0,
 
             'position': 3.0,
-            'orientation': 1,
+            'orientation': 1.0,
 
             'pick': 0,
             'pass': 0,
             'place': 0,
+            'home': 0,
         }
 
         self.grab_pos_thresh = 0.02
@@ -169,6 +170,7 @@ class Planner(Node):
 
         self.weld_id_0 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_0")
         self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
+        self.obj_mocap_idx = self.model.body_mocapid[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "object_0")]
 
         # Set the table positions alligmed with the motion capture coordinate system
         if self.use_hardware:
@@ -238,6 +240,12 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
+        if self.task == 'pass' or self.task == 'place':
+            if self.gripper_0:
+                self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_0]
+            elif self.gripper_1:
+                self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_1]
+
         self.planner.obj_init= np.concatenate([
             self.data.xpos[self.model.body(name='object_0').id],
             self.data.xquat[self.model.body(name='object_0').id]
@@ -276,57 +284,55 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
 
-        current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.model.site(name="object_0_site_0").id])
-        current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
-            
-        current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.site_xpos[self.model.site(name="object_0_site_1").id])
-        current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_1").id]))
+        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.xpos[self.model.body(name='object_0').id])
+        cost_r_0_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_0], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
+        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.xpos[self.model.body(name='object_0').id])
+        cost_r_1_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_1], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
+
+        cost_g_pass = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
+        cost_r_0_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.5, -0.5, -0.5,  0.5]))
+        cost_r_1_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.7071, 0, 0.7071, 0]))
 
         obj_targ_g = np.linalg.norm(self.data.xpos[self.model.body(name='object_0').id] - self.data.xpos[self.model.body(name='target_0').id])
-        obj_targ_r =  quaternion_distance(self.data.xquat[self.model.body(name='object_0').id], self.data.xquat[self.model.body(name='target_0').id])
+        # obj_targ_r =  quaternion_distance(self.data.xquat[self.model.body(name='object_0').id], self.data.xquat[self.model.body(name='target_0').id])
 
-        grasp_0 = (current_cost_g_0 < self.grab_pos_thresh and current_cost_r_0 < self.grab_rot_thresh)
-        grasp_1 = (current_cost_g_1 < self.grab_pos_thresh and current_cost_r_1 < self.grab_rot_thresh)
+        grasp_0 = (cost_g_0_pick < self.grab_pos_thresh and cost_r_0_pick < self.grab_rot_thresh)
+        grasp_1 = (cost_g_1_pick < self.grab_pos_thresh and cost_r_1_pick < self.grab_rot_thresh)
+
+        arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
 
         target_reached_pick = (
-            np.min([current_cost_g_0, current_cost_g_1]) < self.grab_pos_thresh \
-            and current_cost_r_0 < self.grab_rot_thresh \
-            and current_cost_r_1 < self.grab_rot_thresh
+            np.min([cost_g_0_pick, cost_g_1_pick]) < self.grab_pos_thresh \
+            and [cost_r_0_pick, cost_r_1_pick][arm_idx] < self.grab_rot_thresh 
         )
         target_reached_pass = (
-            current_cost_g_0 < self.grab_pos_thresh \
-            and current_cost_g_1 < self.grab_pos_thresh \
-            and current_cost_r_0 < self.grab_rot_thresh \
-            and current_cost_r_1 < self.grab_rot_thresh
+            cost_g_pass < self.grab_pos_thresh \
+            and cost_r_0_pass < self.grab_rot_thresh \
+            and cost_r_1_pass < self.grab_rot_thresh
         )
         target_reached_place = (
-            obj_targ_g < self.grab_pos_thresh \
-            and obj_targ_r < self.grab_rot_thresh 
+            obj_targ_g <= self.grab_pos_thresh 
         )
 
         if self.task=='pick' and target_reached_pick:
+            print("=============== PICK COMPLEATED =============== ")
             self.task = 'pass'
             if grasp_0:
-                self.data.eq_active[self.weld_id_0] = 1
                 self.gripper_0 = 1
             elif grasp_1:
-                self.data.eq_active[self.weld_id_1] = 1
                 self.gripper_1 = 1
         elif self.task=='pass' and target_reached_pass:
+            print("=============== PASS COMPLEATED =============== ")
             self.task = 'place'
             if self.gripper_0:
-                self.data.eq_active[self.weld_id_0] = 0
-                self.data.eq_active[self.weld_id_1] = 1
                 self.gripper_0 = 0
                 self.gripper_1 = 1
             elif self.gripper_1:
-                self.data.eq_active[self.weld_id_0] = 1
-                self.data.eq_active[self.weld_id_1] = 0
                 self.gripper_0 = 1
                 self.gripper_1 = 0
         elif self.task=='place' and target_reached_place:
-            self.data.eq_active[self.weld_id_0] = 0
-            self.data.eq_active[self.weld_id_1] = 0
+            print("=============== PLACE COMPLEATED =============== ")
+            self.task='home'
             self.gripper_0 = 0
             self.gripper_1 = 0
             
@@ -356,8 +362,9 @@ class Planner(Node):
               f'\n| Cost theta: {"%.2f"%(float(cost_theta))} '
               f'\n| Cost r: {"%.2f"%(float(cost_r))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
-              f'\n| Cost gr0: {"%.2f, %.2f"%(float(current_cost_g_0), float(current_cost_r_0))} '
-              f'\n| Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} '
+              f'\n| Cost g pass, place: {"%.2f, %.2f"%(float(cost_g_pass), float(obj_targ_g))} '
+              f'\n| Cost gr0: {"%.2f, %.2f, %.2f"%(float(cost_g_0_pick), float(cost_r_0_pick), float(cost_r_0_pass))} '
+              f'\n| Cost gr1: {"%.2f, %.2f, %.2f"%(float(cost_g_1_pick), float(cost_r_1_pick), float(cost_r_1_pass))} '
             #   f'\n| Cost tr: {"%.2f, %.2f"%(float(current_cost_g_tray), float(current_cost_r_tray))} '
               f'\n| Cost: {np.round(cost, 2)} ', flush=True)
         

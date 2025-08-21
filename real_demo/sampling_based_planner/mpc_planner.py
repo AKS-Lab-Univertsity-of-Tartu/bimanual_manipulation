@@ -2,6 +2,8 @@ from sampling_based_planner.mjx_planner import cem_planner
 from sampling_based_planner.quat_math import quaternion_distance, quaternion_multiply, rotation_quaternion
 from sampling_based_planner.Simple_MLP.mlp_singledof import MLP, MLPProjectionFilter
 from ik_based_planner.ik_solver import InverseKinematicsSolver
+from sampling_based_planner.quat_math import *
+
 
 import mujoco
 from mujoco import viewer
@@ -17,9 +19,9 @@ from io import StringIO
 class run_cem_planner:
     def __init__(self, model, data, num_dof=12, num_batch=500, num_steps=20, 
                  maxiter_cem=1, maxiter_projection=5, num_elite=0.05, timestep=0.05,
-                 position_threshold=0.06, rotation_threshold=0.1,
-                 ik_pos_thresh=0.08, ik_rot_thresh=0.1, 
-                 collision_free_ik_dt=2.0, inference=False, rnn=None,
+                 position_threshold=0.1, rotation_threshold=0.1,
+                 ik_pos_thresh=0.06, ik_rot_thresh=0.1, 
+                 collision_free_ik_dt=5.0, inference=False, rnn=None,
                  max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
                  max_joint_acc=2.0, max_joint_jerk=4.0,
                  device='cuda', cost_weights=None):
@@ -43,6 +45,7 @@ class run_cem_planner:
         self.device = device
 
         self.cost_weights = cost_weights
+        self.collision_free_ik = False
 
         # Initialize CEM planner
         self.cem = cem_planner(
@@ -227,13 +230,28 @@ class run_cem_planner:
             self.cost_weights['pass'] = 0
             self.cost_weights['place'] = 0
         elif task=="pass":
+            self.cost_weights['position'] = 3.0
+            self.cost_weights['theta'] = 0.5
+            self.cost_weights['orientation'] = 1.5
+
             self.cost_weights['pick'] = 0
             self.cost_weights['pass'] = 1
             self.cost_weights['place'] = 0
         elif task=="place":
+            self.cost_weights['position'] = 5.0
+            self.cost_weights['theta'] = 1.0
+
             self.cost_weights['pick'] = 0
             self.cost_weights['pass'] = 0
             self.cost_weights['place'] = 1
+        elif task=="home":
+            self.cost_weights['position'] = 5.0
+            self.cost_weights['theta'] = 1.0
+
+            self.cost_weights['pick'] = 0
+            self.cost_weights['pass'] = 0
+            self.cost_weights['place'] = 0
+            self.cost_weights['home'] = 1
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
@@ -259,33 +277,91 @@ class run_cem_planner:
         thetadot_0 = thetadot_cem[:6]
         thetadot_1 = thetadot_cem[6:]
 
-        # if task == "pick":
 
-        #     # Check if we should switch to collision-free IK for each arm
-        #     current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.target_pos_0)
-        #     current_cost_r_0 = quaternion_distance(self.data.xquat[self.hande_id_0], self.target_rot_0)
-                
-        #     current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.target_pos_1)
-        #     current_cost_r_1 = quaternion_distance(self.data.xquat[self.hande_id_1], self.target_rot_1)
-            
-        #     joint_states = np.zeros(self.cem.joint_mask_pos.shape)
-        #     joint_states[self.cem.joint_mask_pos] = current_pos
+        if not self.collision_free_ik:
+            thetadot = np.concatenate((thetadot_0, thetadot_1))
+            return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon
 
-        #     # Arm 0 control
-        #     if current_cost_g_0 < self.ik_pos_thresh and current_cost_r_0 < self.ik_rot_thresh:
-        #         print("Activated ik solution for arm 0")
-        #         ik_solver_0 = InverseKinematicsSolver(
-        #             self.model, joint_states, "tcp_0")
-        #         ik_solver_0.set_target(self.target_pos_0, self.target_rot_0)
-        #         thetadot_0 = ik_solver_0.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.data.xpos[self.model.body(name='object_0').id])
+        cost_r_0_pick = quaternion_distance(self.data.xquat[self.hande_id_0], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
+        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.data.xpos[self.model.body(name='object_0').id])
+        cost_r_1_pick = quaternion_distance(self.data.xquat[self.hande_id_1], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
+
+        cost_g_pass = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.data.site_xpos[self.tcp_id_1])
+        cost_r_0_pass = quaternion_distance(self.data.xquat[self.hande_id_0], np.array([0.5, -0.5, -0.5,  0.5]))
+        cost_r_1_pass = quaternion_distance(self.data.xquat[self.hande_id_1], np.array([0.7071, 0, 0.7071, 0]))
+
+        obj_targ_g = np.linalg.norm(self.data.xpos[self.model.body(name='object_0').id] - self.data.xpos[self.model.body(name='target_0').id])
+        # obj_targ_r =  quaternion_distance(self.data.xquat[self.model.body(name='object_0').id], self.data.xquat[self.model.body(name='target_0').id])
+
+        arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
+
+        target_reached_pick = (
+            np.min([cost_g_0_pick, cost_g_1_pick]) < self.ik_pos_thresh \
+            and [cost_r_0_pick, cost_r_1_pick][arm_idx] < self.ik_rot_thresh 
+        )
+        target_reached_pass = (
+            cost_g_pass < self.ik_pos_thresh \
+            and (cost_r_0_pass+cost_r_1_pass)/2 < self.ik_rot_thresh 
+        )
+        target_reached_place = (
+            obj_targ_g <= self.ik_pos_thresh 
+        )
+
+        if task == "pick":
+            if arm_idx == 0:
+                target_pos_0 = self.data.xpos[self.model.body(name='object_0').id]
+                target_rot_0 = rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id])
+
+                target_pos_1 = self.data.site_xpos[self.tcp_id_1]
+                target_rot_1 = self.data.xquat[self.hande_id_1]
+            elif arm_idx == 1:
+                target_pos_1 = self.data.xpos[self.model.body(name='object_0').id]
+                target_rot_1 = rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id])
+
+                target_pos_0 = self.data.site_xpos[self.tcp_id_0]
+                target_rot_0 = self.data.xquat[self.hande_id_0]
+
+        elif task == 'pass':
+            target_pos = (self.data.site_xpos[self.tcp_id_0]+self.data.site_xpos[self.tcp_id_1])/2
+            target_pos_0 = target_pos
+            target_rot_0 = np.array([0.5, -0.5, -0.5,  0.5])
+
+            target_pos_1 = target_pos
+            target_rot_1 = np.array([0.7071, 0, 0.7071, 0])
+
+        elif task == 'place':
+            if arm_idx == 0:
+                target_pos_0 = self.data.xpos[self.model.body(name='target_0').id]
+                target_rot_0 = jnp.array([0, -0.7071, -0.7071, 0])
+
+                target_pos_1 = self.data.site_xpos[self.tcp_id_1]
+                target_rot_1 = self.data.xquat[self.hande_id_1]
+            elif arm_idx == 1:
+                target_pos_1 = self.data.xpos[self.model.body(name='target_0').id]
+                target_rot_1 = jnp.array([0, -0.7071, -0.7071, 0])
+
+                target_pos_0 = self.data.site_xpos[self.tcp_id_0]
+                target_rot_0 = self.data.xquat[self.hande_id_0]
+
             
-        #     # Arm 1 control
-        #     if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
-        #         print("Activated ik solution for arm 1")
-        #         ik_solver_1 = InverseKinematicsSolver(
-        #             self.model, joint_states, "tcp_1")
-        #         ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
-        #         thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][self.num_dof//2:]
+        joint_states = np.zeros(self.cem.joint_mask_pos.shape)
+        joint_states[self.cem.joint_mask_pos] = current_pos
+
+        if target_reached_pick or target_reached_pass or target_reached_place:
+            # Arm 0 control
+            print("Activated ik solution for arm 0")
+            ik_solver_0 = InverseKinematicsSolver(
+                self.model, joint_states, "tcp_0")
+            ik_solver_0.set_target(target_pos_0, target_rot_0)
+            thetadot_0 = ik_solver_0.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
+        
+            # Arm 1 control
+            print("Activated ik solution for arm 1")
+            ik_solver_1 = InverseKinematicsSolver(
+                self.model, joint_states, "tcp_1")
+            ik_solver_1.set_target(target_pos_1, target_rot_1)
+            thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][self.num_dof//2:]
 
         # Combine control commands
         thetadot = np.concatenate((thetadot_0, thetadot_1))

@@ -97,21 +97,22 @@ class Visualizer(Node):
         
         self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
         self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
-
-
         self.data = mujoco.MjData(self.model)
 
-        # target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
-        # target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
+
+        # target_0_rot = quaternion_multiply(self.model.body(name="object_0").quat, rotation_quaternion(-90, [0, 1, 0]))
+        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="object_0").quat, rotation_quaternion(90, [0, 1, 0])), rotation_quaternion(0, [1, 0, 0]))
         # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
 
-        # self.model.body(name='target_0').quat = target_0_rot
+        # self.data.xquat[self.model.body(name='object_0').id] = target_0_rot
         # self.model.body(name='target_1').quat = target_1_rot
         # self.model.body(name='target_00').quat = target_0_rot
         # self.model.body(name='target_11').quat = target_1_rot
-        # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
+        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_0_rot
 
-        mujoco.mj_forward(self.model, self.data)
+        print(target_0_rot, flush=True)
+
+        mujoco.mj_step(self.model, self.data)
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
         # self.init_tray_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
@@ -215,27 +216,29 @@ class Visualizer(Node):
 
         theta = self.data_files['trajectory']['theta'][self.step_idx]
         thetadot = self.data_files['trajectory']['thetadot'][self.step_idx]
-        theta_horizon = self.data_files['trajectory']['theta_planned'][self.step_idx]
+        # theta_horizon = self.data_files['trajectory']['theta_planned'][self.step_idx]
 
-        target_0 = self.data_files['trajectory']['target_0'][self.step_idx]
-        target_1 = self.data_files['trajectory']['target_1'][self.step_idx]
+        # target_0 = self.data_files['trajectory']['target_0'][self.step_idx]
+        # target_1 = self.data_files['trajectory']['target_1'][self.step_idx]
 
-        self.data.qpos[self.joint_mask_pos] = theta
+        # self.data.qpos[self.joint_mask_pos] = theta
+        self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
+        self.data.qvel[self.joint_mask_vel] = thetadot
 
-        if self.step_idx >= 40:
-            eef_pos_0 = self.data.site_xpos[self.tcp_id_0]
-            eef_pos_1 = self.data.site_xpos[self.tcp_id_1]
+        # if self.step_idx >= 40:
+        #     eef_pos_0 = self.data.site_xpos[self.tcp_id_0]
+        #     eef_pos_1 = self.data.site_xpos[self.tcp_id_1]
 
-            tray_pos = (eef_pos_0+eef_pos_1)/2 - np.array([0, 0, 0.1])
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
+        #     tray_pos = (eef_pos_0+eef_pos_1)/2 - np.array([0, 0, 0.1])
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
-            tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
+        #     tray_rot_init = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]
 
-            tray_0_pos = self.data.xpos[self.model.body(name='target_0').id]
-            tray_1_pos = self.data.xpos[self.model.body(name='target_1').id]
-            tray_rot = turn_quat(tray_0_pos, tray_1_pos, eef_pos_0, eef_pos_1, tray_rot_init)
+        #     tray_0_pos = self.data.xpos[self.model.body(name='target_0').id]
+        #     tray_1_pos = self.data.xpos[self.model.body(name='target_1').id]
+        #     tray_rot = turn_quat(tray_0_pos, tray_1_pos, eef_pos_0, eef_pos_1, tray_rot_init)
 
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
+        #     self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_rot
 
         mujoco.mj_step(self.model, self.data)
         self.viewer.sync()
@@ -246,8 +249,8 @@ class Visualizer(Node):
             self.step_idx = 0
             self.data.qpos[self.joint_mask_pos] = self.init_joint_position
             self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_pos
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_quat
+            # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_pos
+            # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.init_tray_quat
             mujoco.mj_step(self.model, self.data)
             self.viewer.sync()
 

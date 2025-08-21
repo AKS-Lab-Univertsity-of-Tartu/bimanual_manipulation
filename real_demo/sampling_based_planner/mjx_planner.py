@@ -172,13 +172,15 @@ class cem_planner():
 		self.object_0_site_0_id = self.model.site(name="object_0_site_0").id
 		self.object_0_site_1_id = self.model.site(name="object_0_site_1").id
 
-		self.obj_qpos_idx = self.mjx_model.body_dofadr[self.model.body(name="object_0").id]
+		# self.obj_qpos_idx = self.mjx_model.body_dofadr[self.model.body(name="object_0").id]
 
 		self.weld_id_0 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_0")
 		self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
 
 		# self.tray_0_id = self.model.body(name="target_0").id
 		# self.tray_1_id = self.model.body(name="target_1").id
+
+		self.obj_mocap_idx = self.model.body_mocapid[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "object_0")]
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None, None))
@@ -578,7 +580,9 @@ class cem_planner():
 		obj_0 = jnp.concatenate([obj_pos_0, obj_rot_0])
 		obj_1 = jnp.concatenate([obj_pos_1, obj_rot_1])
 
-		obj = mjx_data.qpos[self.obj_qpos_idx : self.obj_qpos_idx+7]
+		obj = jnp.concatenate([obj_pos_0, obj_rot_0])
+
+		# obj = mjx_data.qpos[self.obj_qpos_idx : self.obj_qpos_idx+7]
 
 		# Compute Jacobians using the current MJX API
 		def get_site_pos0(qpos):
@@ -629,10 +633,11 @@ class cem_planner():
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
-		qpos = qpos.at[self.obj_qpos_idx : self.obj_qpos_idx + 7].set(obj_init)
-		eq_active = mjx_data.eq_active.at[self.weld_id_0].set(grippers[0])
-		eq_active = eq_active.at[self.weld_id_1].set(grippers[1])
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, eq_active=eq_active)
+		# qpos = qpos.at[self.obj_qpos_idx : self.obj_qpos_idx + 7].set(obj_init)
+		# eq_active = mjx_data.eq_active.at[self.weld_id_0].set(grippers[0])
+		# eq_active = eq_active.at[self.weld_id_1].set(grippers[1])
+		mocap_pos = mjx_data.mocap_pos.at[self.obj_mocap_idx].set(obj_init[:3])
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos)
 
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
@@ -654,7 +659,8 @@ class cem_planner():
 		cost_c = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision < 0)
 
 		# Keep arm at all times closer to the initial state
-		cost_theta = jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T - self.init_joint_position)
+		cost_theta_0 = jnp.sum(jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T[:, :6] - self.init_joint_position[:6], axis=1))
+		cost_theta_1 = jnp.sum(jnp.linalg.norm(theta.reshape((self.num_dof, self.num)).T[:, 6:] - self.init_joint_position[6:], axis=1))
 
 		''' Cost pick '''
 
@@ -663,72 +669,129 @@ class cem_planner():
 		cost_g_1 = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - obj_1[:, :3], axis=1))
 		cost_g_pick = jnp.min(jnp.array([cost_g_0, cost_g_1]))
 
+		arm_idx = jnp.argmin(jnp.array([cost_g_0, cost_g_1]))
+
 		# Move end effectors to pick orientation
 		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, (obj_0[:, 3:]/jnp.linalg.norm(obj_0[:, 3:], axis=1).reshape(1, self.num).T).T))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_0 = 2 * jnp.arccos(dot_product)
 
-		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, (obj_1[:, 3:]/jnp.linalg.norm(obj_1[:, 3:], axis=1).reshape(1, self.num).T).T))
+		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, (obj_0[:, 3:]/jnp.linalg.norm(obj_0[:, 3:], axis=1).reshape(1, self.num).T).T))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_1 = 2 * jnp.arccos(dot_product)
 
-		cost_r_pick = (jnp.sum(cost_r_0) + jnp.sum(cost_r_1))/2
+		# cost_r_pick = (jnp.sum(cost_r_0) + jnp.sum(cost_r_1))/2
+		cost_r_pick = jnp.array([jnp.sum(cost_r_0), jnp.sum(cost_r_1)])[arm_idx]
+
+		cost_theta_pick = jnp.array([cost_theta_1, cost_theta_0])[arm_idx]*0.99 + jnp.array([cost_theta_0, cost_theta_1])[arm_idx]*0.01
 
 		''' Cost pass '''
 
 		# Move end effectors to pass position
 		# distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
 		# cost_g_pass = jnp.sum((distances - 0.08)**2)
-		cost_g_0 = jnp.sum(jnp.linalg.norm(eef_0[:, :3] - obj_0[:, :3], axis=1))
-		cost_g_1 = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - obj_1[:, :3], axis=1))
+
+		target_pos = jnp.array([-0.25, 0, 0.5])
+		cost_g_0 = jnp.sum(jnp.linalg.norm(eef_0[:, :3] - target_pos, axis=1))
+		cost_g_1 = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - target_pos, axis=1))
 		cost_g_pass = (cost_g_0+cost_g_1)/2
 
+		# cost_g_pass = jnp.sum(jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1))
+		# cost_g_1 = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - obj_1[:, :3], axis=1))
+		# cost_g_pass = (cost_g_0+cost_g_1)/2
+
 		# Move end effectors to pass orientation
-		target_rot_0 = jnp.array([0, -0.7071, -0.7071, 0])
+		# target_rot_0 = jnp.array([0, -0.7071, -0.7071, 0])
+		# target_rot_0 = jnp.array([0.5, -0.5, -0.5,  0.5]) # 0.5 -0.5 -0.5  0.5
+		# dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
+		# dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		# cost_r_0_pass = 2 * jnp.arccos(dot_product)
+
+		# target_rot_0 = jnp.array([0.7071, 0, -0.7071, 0])
+		# dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
+		# dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		# cost_r_0_recv = 2 * jnp.arccos(dot_product)
+
+		# cost_r_0 = jnp.array([cost_r_0_pass, cost_r_0_recv])[arm_idx]
+
+		target_rot_0 = jnp.array([0.5, -0.5, -0.5,  0.5]) # 0.5 -0.5 -0.5  0.5
 		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_0 = 2 * jnp.arccos(dot_product)
 
-		target_rot_1 = jnp.array([0, -0.7071, 0.7071, 0])
+		# target_rot_1 = jnp.array([0, -0.7071, 0.7071, 0])
+		# target_rot_1 = jnp.array([0.5, -0.5, 0.5,  -0.5]) # 0.5 -0.5  0.5 -0.5
+		# dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_rot_1/jnp.linalg.norm(target_rot_1)))
+		# dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		# cost_r_1_pass = 2 * jnp.arccos(dot_product)
+
+		# target_rot_1 = jnp.array([0.7071, 0, 0.7071, 0]) # 0.5 -0.5  0.5 -0.5
+		# dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_rot_1/jnp.linalg.norm(target_rot_1)))
+		# dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		# cost_r_1_recv = 2 * jnp.arccos(dot_product)
+		# cost_r_1 = jnp.array([cost_r_1_recv, cost_r_1_pass])[arm_idx]
+
+		target_rot_1 = jnp.array([0.7071, 0, 0.7071, 0]) # 0.5 -0.5  0.5 -0.5
 		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_rot_1/jnp.linalg.norm(target_rot_1)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_1 = 2 * jnp.arccos(dot_product)
 
 		cost_r_pass = (jnp.sum(cost_r_0) + jnp.sum(cost_r_1))/2
 
+		cost_theta_pass = (cost_theta_0+cost_theta_1)/2
+
 		''' Cost place '''
 
 		# Move end effectors to place position
-		cost_g_place = jnp.sum(jnp.linalg.norm(obj[:, :3] - target_0[:3], axis=1))
+		# cost_g_place = jnp.sum(jnp.linalg.norm(obj[:, :3] - target_0[:3], axis=1))
+		cost_g_0 = jnp.sum(jnp.linalg.norm(eef_0[:, :3] - target_0[:3], axis=1))
+		cost_g_1 = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - target_0[:3], axis=1))
+		cost_g_place = jnp.min(jnp.array([cost_g_0, cost_g_1]))
 
 		# Move end effectors to place orientation
-		dot_product = jnp.abs(jnp.dot(obj[:, 3:]/jnp.linalg.norm(obj[:, 3:], axis=1).reshape(1, self.num).T, target_0[3:]/jnp.linalg.norm(target_0[3:])))
+		target_rot_0 = jnp.array([0, -0.7071, -0.7071, 0])
+		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
-		cost_r_place = 2 * jnp.arccos(dot_product)
-		cost_r_place = jnp.sum(cost_r_place)
+		cost_r_0_place = 2 * jnp.arccos(dot_product)
+		cost_r_0_place = jnp.sum(cost_r_0_place)
 
+		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
+		dot_product = jnp.clip(dot_product, -1.0, 1.0)
+		cost_r_1_place = 2 * jnp.arccos(dot_product)
+		cost_r_1_place = jnp.sum(cost_r_1_place)
 
+		cost_r_place = jnp.array([jnp.sum(cost_r_0_place), jnp.sum(cost_r_1_place)])[arm_idx]
 
+		cost_theta_place = jnp.array([cost_theta_1, cost_theta_0])[arm_idx]*0.99 + jnp.array([cost_theta_0, cost_theta_1])[arm_idx]*0.01
+
+		''' Cost home '''
+
+		cost_theta_home = (cost_theta_0+cost_theta_1)/2
 
 		cost = (
 			cost_weights['collision']*cost_c +
-			cost_weights['theta']*cost_theta +
 			# cost_weights['velocity']*cost_eef_vel +
 			# cost_weights['z-axis']*cost_eef_pos +
 
 			cost_weights['pick']*cost_weights['position']*cost_g_pick +
 			cost_weights['pick']*cost_weights['orientation']*cost_r_pick+
+			cost_weights['pick']*cost_weights['theta']*cost_theta_pick +
 
 			cost_weights['pass']*cost_weights['position']*cost_g_pass +
 			cost_weights['pass']*cost_weights['orientation']*cost_r_pass+
+			cost_weights['pass']*cost_weights['theta']*cost_theta_pass +
 
 			cost_weights['place']*cost_weights['position']*cost_g_place +
-			cost_weights['place']*cost_weights['orientation']*cost_r_place
+			cost_weights['place']*cost_weights['orientation']*cost_r_place +
+			cost_weights['place']*cost_weights['theta']*cost_theta_place +
+
+			cost_weights['home']*cost_weights['theta']*cost_theta_home
+
 		)	
 
 		cost_list = jnp.array([
 			cost_c, 
-			cost_theta,
+			cost_weights['theta']*(cost_weights['pick']*cost_theta_pick + cost_weights['pass']*cost_theta_pass + cost_weights['place']*cost_theta_place),
 			cost_weights['position']*(cost_weights['pick']*cost_g_pick+cost_weights['pass']*cost_g_pass+cost_weights['place']*cost_g_place), 
 			cost_weights['orientation']*(cost_weights['pick']*cost_r_pick+cost_weights['pass']*cost_r_pass+cost_weights['place']*cost_r_place)
 
