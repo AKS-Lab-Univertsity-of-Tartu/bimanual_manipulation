@@ -21,7 +21,7 @@ class run_cem_planner:
                  maxiter_cem=1, maxiter_projection=5, num_elite=0.05, timestep=0.05,
                  position_threshold=0.1, rotation_threshold=0.1,
                  ik_pos_thresh=0.06, ik_rot_thresh=0.1, 
-                 collision_free_ik_dt=5.0, inference=False, rnn=None,
+                 collision_free_ik_dt=7.0, inference=False, rnn=None,
                  max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
                  max_joint_acc=2.0, max_joint_jerk=4.0,
                  device='cuda', cost_weights=None):
@@ -45,7 +45,7 @@ class run_cem_planner:
         self.device = device
 
         self.cost_weights = cost_weights
-        self.collision_free_ik = False
+        self.collision_free_ik = True
 
         # Initialize CEM planner
         self.cem = cem_planner(
@@ -278,7 +278,7 @@ class run_cem_planner:
         thetadot_1 = thetadot_cem[6:]
 
 
-        if not self.collision_free_ik:
+        if not self.collision_free_ik or task == "home" or task == "place":
             thetadot = np.concatenate((thetadot_0, thetadot_1))
             return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon
 
@@ -330,19 +330,19 @@ class run_cem_planner:
             target_pos_1 = target_pos
             target_rot_1 = np.array([0.7071, 0, 0.7071, 0])
 
-        elif task == 'place':
-            if arm_idx == 0:
-                target_pos_0 = self.data.xpos[self.model.body(name='target_0').id]
-                target_rot_0 = jnp.array([0, -0.7071, -0.7071, 0])
+        # elif task == 'place':
+        #     if arm_idx == 0:
+        #         target_pos_0 = self.data.xpos[self.model.body(name='target_0').id]
+        #         target_rot_0 = jnp.array([0, -0.7071, -0.7071, 0])
 
-                target_pos_1 = self.data.site_xpos[self.tcp_id_1]
-                target_rot_1 = self.data.xquat[self.hande_id_1]
-            elif arm_idx == 1:
-                target_pos_1 = self.data.xpos[self.model.body(name='target_0').id]
-                target_rot_1 = jnp.array([0, -0.7071, -0.7071, 0])
+        #         target_pos_1 = self.data.site_xpos[self.tcp_id_1]
+        #         target_rot_1 = self.data.xquat[self.hande_id_1]
+        #     elif arm_idx == 1:
+        #         target_pos_1 = self.data.xpos[self.model.body(name='target_0').id]
+        #         target_rot_1 = jnp.array([0, -0.7071, -0.7071, 0])
 
-                target_pos_0 = self.data.site_xpos[self.tcp_id_0]
-                target_rot_0 = self.data.xquat[self.hande_id_0]
+        #         target_pos_0 = self.data.site_xpos[self.tcp_id_0]
+        #         target_rot_0 = self.data.xquat[self.hande_id_0]
 
             
         joint_states = np.zeros(self.cem.joint_mask_pos.shape)
