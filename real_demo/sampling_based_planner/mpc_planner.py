@@ -20,7 +20,7 @@ class run_cem_planner:
     def __init__(self, model, data, num_dof=12, num_batch=500, num_steps=20, 
                  maxiter_cem=1, maxiter_projection=5, num_elite=0.05, timestep=0.05,
                  position_threshold=0.1, rotation_threshold=0.1,
-                 ik_pos_thresh=0.06, ik_rot_thresh=0.1, 
+                 ik_pos_thresh=0.07, ik_rot_thresh=0.1, 
                  collision_free_ik_dt=7.0, inference=False, rnn=None,
                  max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
                  max_joint_acc=2.0, max_joint_jerk=4.0,
@@ -225,13 +225,18 @@ class run_cem_planner:
 
         grippers = np.array([gripper_0, gripper_1], dtype=np.uint8)
 
+        self.obj_init = np.concatenate([
+            self.data.xpos[self.model.body(name='object_0').id],
+            self.data.xquat[self.model.body(name='object_0').id]
+        ])
+
         if task=="pick":
             self.cost_weights['pick'] = 1
             self.cost_weights['pass'] = 0
             self.cost_weights['place'] = 0
         elif task=="pass":
-            self.cost_weights['position'] = 3.0
-            self.cost_weights['theta'] = 0.5
+            self.cost_weights['position'] = 4.0
+            self.cost_weights['theta'] = 0.3
             self.cost_weights['orientation'] = 1.5
 
             self.cost_weights['pick'] = 0
@@ -252,6 +257,9 @@ class run_cem_planner:
             self.cost_weights['pass'] = 0
             self.cost_weights['place'] = 0
             self.cost_weights['home'] = 1
+
+
+        self.cost_weights['arm_idx'] = np.argmax(grippers)
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
@@ -330,6 +338,8 @@ class run_cem_planner:
             target_pos_1 = target_pos
             target_rot_1 = np.array([0.7071, 0, 0.7071, 0])
 
+            print(target_reached_pass, cost_g_pass, (cost_r_0_pass+cost_r_1_pass)/2, cost_r_0_pass, cost_r_1_pass, flush=True)
+
         # elif task == 'place':
         #     if arm_idx == 0:
         #         target_pos_0 = self.data.xpos[self.model.body(name='target_0').id]
@@ -348,7 +358,7 @@ class run_cem_planner:
         joint_states = np.zeros(self.cem.joint_mask_pos.shape)
         joint_states[self.cem.joint_mask_pos] = current_pos
 
-        if target_reached_pick or target_reached_pass or target_reached_place:
+        if target_reached_pick or target_reached_pass:
             # Arm 0 control
             print("Activated ik solution for arm 0")
             ik_solver_0 = InverseKinematicsSolver(

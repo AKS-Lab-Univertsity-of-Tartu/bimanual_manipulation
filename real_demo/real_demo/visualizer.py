@@ -101,16 +101,22 @@ class Visualizer(Node):
 
 
         # target_0_rot = quaternion_multiply(self.model.body(name="object_0").quat, rotation_quaternion(-90, [0, 1, 0]))
-        target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="object_0").quat, rotation_quaternion(90, [0, 1, 0])), rotation_quaternion(0, [1, 0, 0]))
+        # target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="object_0").quat, rotation_quaternion(90, [0, 1, 0])), rotation_quaternion(0, [1, 0, 0]))
         # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
 
         # self.data.xquat[self.model.body(name='object_0').id] = target_0_rot
         # self.model.body(name='target_1').quat = target_1_rot
         # self.model.body(name='target_00').quat = target_0_rot
         # self.model.body(name='target_11').quat = target_1_rot
-        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_0_rot
+        # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_0_rot
+        # target_0_pos = np.array([0.1, -0.5, 0.05])
+        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_0_pos
 
-        print(target_0_rot, flush=True)
+        # bin_pos = np.array([-0.8, 0.2, 0.07])
+        # # self.data.xpos[self.model.body(name='bin').id] = bin_pos
+        # self.model.body(name='bin').pos = bin_pos
+
+        # print(target_0_rot, flush=True)
 
         mujoco.mj_step(self.model, self.data)
 

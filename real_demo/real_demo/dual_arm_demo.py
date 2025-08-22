@@ -23,9 +23,10 @@ PACKAGE_DIR = get_package_share_directory('real_demo')
 np.set_printoptions(precision=4, suppress=True)
 
 target_positions = np.array([
-    [-0.25, -0.2, 0.3],
-    [-0.25, 0.0, 0.3],
-    [-0.25, -0.1, 0.3],
+    [0.1, -0.5, 0.05],
+])
+bin_positions = np.array([
+    [-0.8, 0.2, 0.2],
 ])
 
 target_rotations = np.array([
@@ -113,6 +114,8 @@ class Planner(Node):
             'pass': 0,
             'place': 0,
             'home': 0,
+
+            'arm_idx': 0,
         }
 
         self.grab_pos_thresh = 0.02
@@ -167,6 +170,10 @@ class Planner(Node):
         self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+
+        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_positions
+        # self.model.body(name='bin').pos = bin_positions
+        # self.data.xpos[self.model.body(name='bin').id] = bin_positions
 
         self.weld_id_0 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_0")
         self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
@@ -294,7 +301,11 @@ class Planner(Node):
         cost_r_1_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.7071, 0, 0.7071, 0]))
 
         obj_targ_g = np.linalg.norm(self.data.xpos[self.model.body(name='object_0').id] - self.data.xpos[self.model.body(name='target_0').id])
-        # obj_targ_r =  quaternion_distance(self.data.xquat[self.model.body(name='object_0').id], self.data.xquat[self.model.body(name='target_0').id])
+        obj_targ_r_1 =  quaternion_distance(self.data.xquat[self.planner.hande_id_1], jnp.array([0, -0.7071, -0.7071, 0]))
+        obj_targ_r_0 =  quaternion_distance(self.data.xquat[self.planner.hande_id_0], jnp.array([0, -0.7071, -0.7071, 0]))
+        obj_targ_r = np.array([obj_targ_r_0, obj_targ_r_1])
+
+        cost_g_home = np.linalg.norm(self.data.qpos[self.joint_mask_pos] - self.init_joint_position)
 
         grasp_0 = (cost_g_0_pick < self.grab_pos_thresh and cost_r_0_pick < self.grab_rot_thresh)
         grasp_1 = (cost_g_1_pick < self.grab_pos_thresh and cost_r_1_pick < self.grab_rot_thresh)
@@ -311,7 +322,12 @@ class Planner(Node):
             and cost_r_1_pass < self.grab_rot_thresh
         )
         target_reached_place = (
-            obj_targ_g <= self.grab_pos_thresh 
+            obj_targ_g <= self.grab_pos_thresh \
+            and obj_targ_r[arm_idx] <= self.grab_rot_thresh
+        )
+
+        target_reached_home = (
+            cost_g_home <= self.grab_pos_thresh 
         )
 
         if self.task=='pick' and target_reached_pick:
@@ -335,7 +351,12 @@ class Planner(Node):
             self.task='home'
             self.gripper_0 = 0
             self.gripper_1 = 0
-            
+        elif self.task=='home' and target_reached_home:
+            self.task = 'pick'
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_positions
+            self.model.body(name='target_0').pos = bin_positions
+            self.data.xpos[self.model.body(name='target_0').id] = bin_positions
+            self.planner.target_0[:3] = bin_positions
 
         if self.record_data_:    
             theta = self.data.qpos[self.joint_mask_pos]
