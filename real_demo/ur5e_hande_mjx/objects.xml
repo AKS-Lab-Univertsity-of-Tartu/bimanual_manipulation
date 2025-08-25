@@ -4,7 +4,7 @@
 <!-- For example, quat = [0.7071, 0.7071, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from a side -->
 <!-- For example, quat = [0.0, 1.0, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from top -->
 
-    <body mocap="true" name="target_0" pos="-0.25 -0.25 0.2" quat="1 0 0 0">
+    <body mocap="true" name="target_0" pos="-0.25 0.0 0.3" quat="1 0 0 0">
         <geom name="target_0" rgba="1 1 1 0.2" size="0.1 0.1 0.1" type="box" contype="0" conaffinity="0"/>
         <!-- <geom name="wall_00" pos="0 0 0.15" rgba="0.6 0 0 0.1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/>
         <geom name="wall_11" pos="0 0 -0.15" rgba="0.6 0 0 0.1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/> -->

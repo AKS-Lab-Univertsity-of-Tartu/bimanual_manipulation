@@ -292,14 +292,14 @@ class Planner(Node):
         else:
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
             self.data.qvel[self.joint_mask_vel] = self.thetadot
-            if self.task == 'move':
-                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = np.array([0, 0, 2])
             mujoco.mj_step(self.model, self.data)
 
         if self.task=='move':
             center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
             mujoco.mj_forward(self.model, self.data)
+        elif self.task=='pick':
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]]
 
         self.render_trace(self.viewer, eef_0_planned[:,:3], eef_1_planned[:,:3])
 
@@ -348,8 +348,8 @@ class Planner(Node):
                 # else:
                 #     self.target_idx = 0
                 
-            # if cost_g > 0.05:
-            #     self.task='pick'
+            if cost_g > 0.05:
+                self.task='pick'
             
 
         # elif self.task=='move':
