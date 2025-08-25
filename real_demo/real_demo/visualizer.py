@@ -250,7 +250,7 @@ class Visualizer(Node):
         self.model.body(name='table0_marker').pos = marker_pose
         self.viewer.cam.lookat[:] = self.model.body(name='table_0').pos
 
-        self.model.body(name='tray_mocap_target').pos += marker_diff
+        # self.model.body(name='tray_mocap_target').pos += marker_diff
 
     def table1_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]

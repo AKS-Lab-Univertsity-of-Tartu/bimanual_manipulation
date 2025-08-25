@@ -192,7 +192,7 @@ class cem_planner():
 
 		self.target_0_id = self.model.body(name="target_0").id
 		self.ball_id = self.model.body(name="ball").id
-		self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
+		# self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
 		self.target_mocap_idx = self.model.body_mocapid[self.model.body(name='target_0').id]
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None))
@@ -661,7 +661,7 @@ class cem_planner():
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
-		qpos = qpos.at[self.ball_qpos_idx : self.ball_qpos_idx + 3].set(ball_init[:3])
+		# qpos = qpos.at[self.ball_qpos_idx : self.ball_qpos_idx + 3].set(ball_init[:3])
 		mocap_pos = mjx_data.mocap_pos.at[self.target_mocap_idx].set(target_0[:3])
 		mocap_quat = mjx_data.mocap_quat.at[self.target_mocap_idx].set(target_0[3:])
 		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos, mocap_quat=mocap_quat)
@@ -725,7 +725,10 @@ class cem_planner():
 		# eef_1_obj = eef_1[:, :2] - ball[:, :2]
 		# eef_1_obj_dist = jnp.linalg.norm(eef_1_obj, axis=1)
 
-		obj_goal = ball[:, :3] - target_0[:3]
+		# obj_goal = ball[:, :3] - target_0[:3]
+		# obj_goal_dist = jnp.linalg.norm(obj_goal, axis=1)
+		center_pos = (eef_0[:, :3] + eef_1[:, :3])/2 + jnp.array([0, 0, 0.05])
+		obj_goal = center_pos - target_0[:3]
 		obj_goal_dist = jnp.linalg.norm(obj_goal, axis=1)
 
 		# push_align_0 = jnp.abs(jnp.sum(eef_0_obj*obj_goal, axis=1)/(eef_0_obj_dist * obj_goal_dist) - 1)
@@ -734,7 +737,7 @@ class cem_planner():
 
 		# Approach the ball with some offset
 		distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
-		cost_dist = jnp.sum((distances - 0.15)**2)
+		cost_dist = jnp.sum((distances - 0.18)**2)
 
 		# Distance between center point between two eef and object with the offset
 		center_point = (eef_0[:, :3]+eef_1[:, :3])/2
@@ -743,7 +746,7 @@ class cem_planner():
 		# approach_offset = approach_offset/(jnp.abs(approach_offset)+0.00001)*0.06
 		# approach_offset = approach_offset.at[:, 2].set(0.01)
 
-		center_obj_dist = jnp.linalg.norm(center_point - (ball[:, :3]-jnp.array([0, 0, 0.05])), axis=1)
+		center_obj_dist = jnp.linalg.norm(center_point - (target_2[:3]-jnp.array([0, 0, 0.05])), axis=1)
 		eef_obj_dist = jnp.sum(center_obj_dist)
 
 		# Equal distance between eefs and object
@@ -765,7 +768,7 @@ class cem_planner():
 
 			# cost_weights['allign']*push_align +
 			cost_weights['orientation']*cost_r +
-			cost_weights['eef_to_obj']*eef_obj_dist +
+			cost_weights['pick']*cost_weights['eef_to_obj']*eef_obj_dist +
 			# cost_weights['distance']*2*dist_eq +
 			cost_weights['move']*cost_weights['obj_to_targ']*obj_goal_dist
 		)	

@@ -107,12 +107,12 @@ class Planner(Node):
 			'theta': 0.3,
 			'z-axis': 20.0,
             'velocity': 0.1,
-            'distance': 20.0,
+            'distance': 40.0,
 
             'allign': 2.0,
-            'orientation': 5.0,
+            'orientation': 7.0,
             'eef_to_obj': 10.0,
-            'obj_to_targ': 10.0,
+            'obj_to_targ': 5.0,
 
             'pick': 0,
             'move': 0
@@ -148,8 +148,6 @@ class Planner(Node):
         model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.model.opt.timestep = self.timestep
-
-        self.data = mujoco.MjData(self.model)
   
         joint_names_pos = list()
         joint_names_vel = list()
@@ -170,7 +168,7 @@ class Planner(Node):
         self.joint_mask_pos = np.isin(joint_names_pos, robot_joints)
         self.joint_mask_vel = np.isin(joint_names_vel, robot_joints)
 
-        self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        self.ball_qpos_idx = self.model.body_dofadr[self.model.body(name="ball").id]
 
         # Set the table positions alligmed with the motion capture coordinate system
         if self.use_hardware:
@@ -183,14 +181,18 @@ class Planner(Node):
             self.model.body(name='table0_marker').pos = setup['setup'][0][1]
             self.model.body(name='table_1').pos = setup['setup'][0][2]
             self.model.body(name='table1_marker').pos = setup['setup'][0][3]
+            self.model.body(name='ball').pos += marker_diff
+
+        # mujoco.mj_forward(self.model, self.data)
+        self.data = mujoco.MjData(self.model)
+
+        # self.data.qpos[self.ball_qpos_idx:self.ball_qpos_idx+3] = self.model.body(name='ball').pos
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = self.model.body(name='ball').pos + np.array([0, 0, 0.2])
 
         mujoco.mj_forward(self.model, self.data)
 
-        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]][:2] = self.data.xpos[self.model.body(name='ball').id][:2]
-
-        mujoco.mj_forward(self.model, self.data)
-
-        self.ball_qpos_idx = self.model.body_dofadr[self.model.body(name="ball").id]
+        self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        
 
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
@@ -249,6 +251,11 @@ class Planner(Node):
     def control_loop(self):
         """Main control loop running at fixed interval"""
         start_time = time.time()
+
+        # if self.task=='move':
+        #     center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
+            
         
 
         self.planner.target_2[:3] = self.data.xpos[self.model.body(name='ball').id]
@@ -277,14 +284,20 @@ class Planner(Node):
             # Update MuJoCo state
             current_pos = np.concatenate((np.array(self.rtde_r_0.getActualQ()), np.array(self.rtde_r_1.getActualQ())), axis=None)
             self.data.qpos[self.joint_mask_pos] = current_pos
-            # mujoco.mj_forward(self.model, self.data)
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
-            # self.data.qvel[self.joint_mask_vel] = self.thetadot
+            self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
         else:
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
             self.data.qvel[self.joint_mask_vel] = self.thetadot
+            if self.task == 'move':
+                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = np.array([0, 0, 2])
             mujoco.mj_step(self.model, self.data)
+
+        if self.task=='move':
+            center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
+            mujoco.mj_forward(self.model, self.data)
 
         self.render_trace(self.viewer, eef_0_planned[:,:3], eef_1_planned[:,:3])
 
@@ -316,24 +329,24 @@ class Planner(Node):
             target_reached = cost_g_ball < 0.02
             if target_reached:
                 print("======================= TARGET REACHED =======================", flush=True)
-                self.data.qpos[self.ball_qpos_idx : self.ball_qpos_idx+3] = init_positions[self.target_idx]
-                self.data.qpos[self.joint_mask_pos] = self.init_joint_position
-                self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
-                mujoco.mj_step(self.model, self.data)
+                # self.data.qpos[self.ball_qpos_idx : self.ball_qpos_idx+3] = init_positions[self.target_idx]
+                # self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+                # self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
+                # mujoco.mj_step(self.model, self.data)
 
                 # self.data.xpos[self.model.body(name='target_0').id] = self.data.xpos[self.model.body(name='ball').id] + np.array([0, 0, 0.15])
-                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]][:2] = self.data.xpos[self.model.body(name='ball').id][:2]
+                # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]][:2] = self.data.xpos[self.model.body(name='ball').id][:2]
 
 
-                self.planner.target_0[:2] = self.data.xpos[self.model.body(name='ball').id][:2]
+                # self.planner.target_0[:2] = self.data.xpos[self.model.body(name='ball').id][:2]
                 # self.model.body(name="target_0").pos = target_positions[self.target_idx]
-                if self.target_idx<len(target_positions)-1:
-                    self.target_idx+=1
-                else:
-                    self.target_idx = 0
+                # if self.target_idx<len(target_positions)-1:
+                #     self.target_idx+=1
+                # else:
+                #     self.target_idx = 0
                 
-            if cost_g > 0.05:
-                self.task='pick'
+            # if cost_g > 0.05:
+            #     self.task='pick'
             
 
         # elif self.task=='move':
