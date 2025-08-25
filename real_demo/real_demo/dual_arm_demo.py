@@ -105,14 +105,14 @@ class Planner(Node):
         cost_weights = {
             'collision': 500,
 			'theta': 0.3,
-			'z-axis': 20.0,
+			'z-axis': 10.0,
             'velocity': 0.1,
-            'distance': 40.0,
+            'distance': 10.0,
 
             'allign': 2.0,
             'orientation': 7.0,
             'eef_to_obj': 10.0,
-            'obj_to_targ': 5.0,
+            'obj_to_targ': 1.0,
 
             'pick': 0,
             'move': 0
@@ -182,12 +182,14 @@ class Planner(Node):
             self.model.body(name='table_1').pos = setup['setup'][0][2]
             self.model.body(name='table1_marker').pos = setup['setup'][0][3]
             self.model.body(name='ball').pos += marker_diff
+            self.model.body(name='ball_pick').pos += marker_diff
+            self.model.body(name='target_0').pos += marker_diff
 
         # mujoco.mj_forward(self.model, self.data)
         self.data = mujoco.MjData(self.model)
 
         # self.data.qpos[self.ball_qpos_idx:self.ball_qpos_idx+3] = self.model.body(name='ball').pos
-        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = self.model.body(name='ball').pos + np.array([0, 0, 0.2])
+        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = self.model.body(name='ball').pos + np.array([0, 0, 0.2])
 
         mujoco.mj_forward(self.model, self.data)
 
@@ -305,7 +307,7 @@ class Planner(Node):
         cost_g = np.linalg.norm(center_pos - (self.data.xpos[self.model.body(name='ball').id]-np.array([0, 0, 0.05])))
 
         distances = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
-        cost_dist = (distances - 0.18)**2
+        cost_dist = (distances - 0.14)**2
 
         current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.183, -0.683, -0.683, 0.183]))
         current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.183, -0.683, 0.683, -0.183]))
@@ -317,12 +319,13 @@ class Planner(Node):
         if self.task=='pick':
             target_reached = (
                     cost_g < self.grab_pos_thresh \
-                    and cost_dist < self.grab_dist_thresh \
+                    and cost_dist < 0.005 \
                     and current_cost_r_0 < self.grab_rot_thresh \
                     and current_cost_r_1 < self.grab_rot_thresh
             )
 
             if target_reached:
+                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = np.array([0, 0, 2])
                 self.task = 'move'
 
         elif self.task == 'move':
@@ -383,14 +386,14 @@ class Planner(Node):
         # Update viewer
         self.viewer.sync()
 
-        cost_c, cost_r, cost_eef_obj, cost_obj_g = cost_list
+        cost_c, cost_r, cost_dist_mjx, cost_z = cost_list
         
         # Print debug info
         print(f'\n| Task: {self.task} '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
-              f'\n| Cost eef to obj: {"%.2f, %.2f"%(float(cost_eef_obj), float(cost_g))} '
-              f'\n| Cost obj to g: {"%.2f, %.2f"%(float(cost_obj_g), float(cost_g_ball))} '
-              f'\n| Cost r: {"%.2f"%(float(cost_r))} '
+              f'\n| Cost eef to obj: {"%.2f, %.2f"%(float(cost_g), float(cost_g))} '
+              f'\n| Cost obj to g: {"%.2f, %.2f"%(float(cost_g_ball), float(cost_g_ball))} '
+              f'\n| Cost r, dist, z: {"%.2f, %.2f, %.2f"%(float(cost_r), float(cost_dist_mjx), float(cost_z))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
               f'\n| Cost dist: {"%.2f"%(float(cost_dist))} '
               f'\n| Cost gr0: {"%.2f"%(float(current_cost_r_0))} '

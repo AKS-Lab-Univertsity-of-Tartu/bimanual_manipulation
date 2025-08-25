@@ -4,7 +4,7 @@
 <!-- For example, quat = [0.7071, 0.7071, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from a side -->
 <!-- For example, quat = [0.0, 1.0, 0, 0] represents a rotation of 90 degrees about the x-axis. End-effector should reach object from top -->
 
-    <body mocap="true" name="target_0" pos="-0.25 -0.25 0.3" quat="1 0 0 0">
+    <body mocap="true" name="target_0" pos="-0.25 -0.25 0.2" quat="1 0 0 0">
         <geom name="target_0" rgba="1 1 1 0.2" size="0.1 0.1 0.1" type="box" contype="0" conaffinity="0"/>
         <!-- <geom name="wall_00" pos="0 0 0.15" rgba="0.6 0 0 0.1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/>
         <geom name="wall_11" pos="0 0 -0.15" rgba="0.6 0 0 0.1" size="0.1 0.1 0.01" type="box" contype="2" conaffinity="0"/> -->
@@ -17,9 +17,12 @@
         <geom name="target_1" rgba="0 1 0 0.2" size="0.01 0.01 0.01" type="box" contype="0" conaffinity="0"/>
     </body> -->
 
-    <body mocap="true" name="ball" pos="-0.25 0.25 0.12" quat="1 0 0 0" >
+    <body mocap="true" name="ball" pos="-0.25 0.25 0.14" quat="1 0 0 0" >
         <!-- <joint type="free" damping="0.007" name="free_joint_0"/> -->
-        <geom name="ball" pos="0 0 0" rgba="0 0.6 0 1" size="0.1" type="sphere" mass="0.1" contype="0" conaffinity="2158718"/>
+        <geom name="ball" pos="0 0 0" rgba="0 0.6 0 1" size="0.11" type="sphere" mass="0.1" contype="0" conaffinity="2"/>
+    </body>
+    <body mocap="true" name="ball_pick" pos="-0.25 0.25 0.14" quat="1 0 0 0" >
+        <geom name="ball_pick" pos="0 0 0" rgba="0 0.6 0 1" size="0.08" type="sphere" mass="0.1" contype="0" conaffinity="2158718"/>
     </body>
 
     <!-- <body name="walls" pos="-0.25 -0.25 0.3" quat="1 0 0 0" gravcomp="1">
@@ -31,7 +34,6 @@
 
     <!-- <body name="wall" pos="-0.25 0.0 0.09" quat="1 0 0 0" >
         <geom name="wall_0" pos="0 0 0" rgba="0.6 0 0 1" size="0.2 0.01 0.15" type="box" contype="2" conaffinity="0"/>
-
     </body> -->
 
     <!-- <body name="box" pos="-0.3 0.2 0.13" quat="1 0 0 0">

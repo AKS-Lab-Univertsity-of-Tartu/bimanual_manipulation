@@ -168,7 +168,7 @@ class cem_planner():
 		wall_geom_id = np.array([
 				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball'),
 				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'wall_0'),
-				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'wall_1'),
+				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball_pick'),
 			])
 		# self.geom_ids_all = np.concatenate([self.geom_ids_all, target_geom_id])
 		ball_mask = ~jnp.any(jnp.isin(self.mjx_data.contact.geom, ball_geom_id), axis=1)
@@ -194,6 +194,7 @@ class cem_planner():
 		self.ball_id = self.model.body(name="ball").id
 		# self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
 		self.target_mocap_idx = self.model.body_mocapid[self.model.body(name='target_0').id]
+		self.ball_mocap_idx = self.model.body_mocapid[self.model.body(name='ball').id]
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, None, None, None))
@@ -612,6 +613,14 @@ class cem_planner():
 		ball = jnp.concatenate([mjx_data.xpos[self.ball_id]	, mjx_data.xquat[self.ball_id]])
 		# ball = jnp.concatenate([mjx_data.qpos[self.ball_qpos_idx : self.ball_qpos_idx + 3], mjx_data.xquat[self.ball_id]])
 
+		ball_pos = (eef_pos_0+eef_pos_1)/2 + jnp.array([0, 0, 0.05])
+		mocap_pos = mjx_data.mocap_pos.at[self.ball_mocap_idx].set(ball_pos)
+		mjx_data = mjx_data.replace(mocap_pos=mocap_pos)
+
+		ball = jnp.concatenate([ball_pos, mjx_data.xquat[self.ball_id]])
+
+		
+
 		# Compute Jacobians using the current MJX API
 		def get_site_pos0(qpos):
 			# Create new data with updated qpos
@@ -664,6 +673,7 @@ class cem_planner():
 		# qpos = qpos.at[self.ball_qpos_idx : self.ball_qpos_idx + 3].set(ball_init[:3])
 		mocap_pos = mjx_data.mocap_pos.at[self.target_mocap_idx].set(target_0[:3])
 		mocap_quat = mjx_data.mocap_quat.at[self.target_mocap_idx].set(target_0[3:])
+		mocap_pos = mocap_pos.at[self.ball_mocap_idx].set(ball_init[:3])
 		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos, mocap_quat=mocap_quat)
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
@@ -737,7 +747,7 @@ class cem_planner():
 
 		# Approach the ball with some offset
 		distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
-		cost_dist = jnp.sum((distances - 0.18)**2)
+		cost_dist = jnp.sum((distances - 0.14)**2)
 
 		# Distance between center point between two eef and object with the offset
 		center_point = (eef_0[:, :3]+eef_1[:, :3])/2
@@ -777,8 +787,8 @@ class cem_planner():
 			cost_weights['pick']*cost_weights['collision']*cost_c_pick +
 			cost_weights['move']*cost_weights['collision']*cost_c_move, 
 			cost_weights['orientation']*cost_r,
-			cost_weights['eef_to_obj']*eef_obj_dist , 
-			cost_weights['obj_to_targ']*obj_goal_dist, 
+			cost_weights['distance']*cost_dist, 
+			cost_weights['z-axis']*cost_eef_pos, 
 			# cost_weights['distance']*cost_dist
 		])
 

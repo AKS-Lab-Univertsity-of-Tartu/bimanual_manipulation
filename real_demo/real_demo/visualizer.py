@@ -163,8 +163,8 @@ class Visualizer(Node):
 
     def move_to_start(self):
         """Move robot to initial joint position"""
-        self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
-        self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
+        # self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        # self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         print("Moved to initial pose.")
 
     def view_model(self):
