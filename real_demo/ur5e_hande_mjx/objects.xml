@@ -24,6 +24,17 @@
         <geom name="target_0" pos="0 0 0" rgba="0.6 0.6 0.6 0.3" size="0.05 0.05 0.05" type="box" contype="0" conaffinity="0"/>
     </body>
 
+    <body name="obstacles" >
+        <geom pos="-0.25 0.25 0.5" rgba="0.6 0 0 1" size="0.05" type="sphere" contype="2" conaffinity="0"/>
+        <geom pos="-0.20 0.0 0.7" rgba="0.6 0 0 1" size="0.08" type="sphere" contype="2" conaffinity="0"/>
+        <geom pos="-0.30 -0.20 0.6" rgba="0.6 0 0 1" size="0.05" type="sphere" contype="2" conaffinity="0"/>
+        <geom pos="-0.10 -0.25 0.3" rgba="0.6 0 0 1" size="0.07" type="sphere" contype="2" conaffinity="0"/>
+        <geom pos="-0.60 0.25 0.3" rgba="0.6 0 0 1" size="0.07" type="sphere" contype="2" conaffinity="0"/>
+        <geom pos="-0.25 0 0.3" rgba="0.6 0 0 1" size="0.07" type="sphere" contype="2" conaffinity="0"/>
+        <geom pos="-0.25 0.15 0.75" rgba="0.6 0 0 1" size="0.07" type="sphere" contype="2" conaffinity="0"/>
+        <geom pos="-0.25 -0.15 0.8" rgba="0.6 0 0 1" size="0.07" type="sphere" contype="2" conaffinity="0"/>
+    </body>
+
     <!-- <body name="bin" pos="0.0 0.2 0.07" quat="1 0 0 0">
         <body name="target_0" pos="0 0 0.1" quat="1 0 0 0">
             <geom name="target_0" pos="0 0 0" rgba="0.6 0.6 0.6 0.3" size="0.01 0.01 0.01" type="box" contype="0" conaffinity="0"/>

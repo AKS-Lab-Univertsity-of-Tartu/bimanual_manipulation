@@ -97,25 +97,32 @@ class Planner(Node):
                 'timestamp': [],
             }
 
-        self.task = 'pick'
+        self.task_0 = 'home'
+        self.task_1 = 'home'
         self.target_idx = 0
         self.grasp = None
-        self.gripper_0 = 0
-        self.gripper_1 = 0
 
         cost_weights = {
             'collision': 500,
 			'theta': 1.0,
+            'cost_yz': 3.0,
 
             'position': 3.0,
             'orientation': 1.0,
 
-            'pick': 0,
-            'pass': 0,
-            'place': 0,
-            'home': 0,
+            'arm_0' : {
+                'pick': 0,
+                'pass': 0,
+                'place': 0,
+                'home': 0
+            },
 
-            'arm_idx': 0,
+            'arm_1' : {
+                'pick': 0,
+                'pass': 0,
+                'place': 0,
+                'home': 0
+            }
         }
 
         self.grab_pos_thresh = 0.02
@@ -171,12 +178,6 @@ class Planner(Node):
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
 
-        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_positions
-        # self.model.body(name='bin').pos = bin_positions
-        # self.data.xpos[self.model.body(name='bin').id] = bin_positions
-
-        self.weld_id_0 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_0")
-        self.weld_id_1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_EQUALITY, "grasp_1")
         self.obj_mocap_idx = self.model.body_mocapid[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "object_0")]
 
         # Set the table positions alligmed with the motion capture coordinate system
@@ -192,22 +193,8 @@ class Planner(Node):
             self.model.body(name='table1_marker').pos = setup['setup'][0][3]
 
             self.model.body(name='tray').pos += marker_diff
-            # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] += marker_diff
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
             self.model.body(name='tray_mocap_target').pos += marker_diff
-
-        # self.tray_init_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
-        # self.tray_init_rot = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
-
-        # target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
-        # target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
-        # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
-
-        # self.model.body(name='target_0').quat = target_0_rot
-        # self.model.body(name='target_1').quat = target_1_rot
-        # self.model.body(name='target_00').quat = target_0_rot
-        # self.model.body(name='target_11').quat = target_1_rot
-        # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
 
         mujoco.mj_forward(self.model, self.data)
 
@@ -226,14 +213,29 @@ class Planner(Node):
             rotation_threshold=rotation_threshold,
             cost_weights=cost_weights
         )
+
+        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.xpos[self.model.body(name='object_0').id])
+        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.xpos[self.model.body(name='object_0').id])
+        self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
+
+        if self.arm_idx == 0:
+            self.task_0 = 'pick'
+        else:
+            self.task_1 = 'pick'
+
+        self.planner.cost_weights['arm_0'][self.task_0] = 1
+        self.planner.cost_weights['arm_1'][self.task_1] = 1
+
+        table_center = (self.model.body(name='table_0').pos+self.model.body(name='table_1').pos)/2
         
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        self.viewer.cam.lookat[:] = self.model.body(name='table_0').pos
-        self.viewer.cam.distance = 5.0 
-        self.viewer.cam.azimuth = 90.0 
-        self.viewer.cam.elevation = -30.0 
+        self.viewer.cam.lookat[:] = [table_center[0], table_center[1], 0.3] #[0.0, 0.0, 0.8]  
+        self.viewer.cam.distance = 3.0 
+        self.viewer.cam.azimuth = 0.0 
+        self.viewer.cam.elevation = -10.0 
+        self.angle = 0
 
         # Setup subscribers
         qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
@@ -247,11 +249,10 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
-        if self.task == 'pass' or self.task == 'place':
-            if self.gripper_0:
-                self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_0]
-            elif self.gripper_1:
-                self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_1]
+        if (self.task_0 == 'pass' or self.task_0 == 'place') and self.arm_idx == 0:
+            self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_0]
+        elif (self.task_1 == 'pass' or self.task_1 == 'place') and self.arm_idx == 1:
+            self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_1]
 
         self.planner.obj_init= np.concatenate([
             self.data.xpos[self.model.body(name='object_0').id],
@@ -272,7 +273,7 @@ class Planner(Node):
         
         
         # Compute control
-        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel, self.task, self.gripper_0, self.gripper_1)
+        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel, self.task_0, self.task_1)
         
         if self.use_hardware:
             # Send velocity command
@@ -300,63 +301,79 @@ class Planner(Node):
         cost_r_0_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.5, -0.5, -0.5,  0.5]))
         cost_r_1_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.7071, 0, 0.7071, 0]))
 
-        obj_targ_g = np.linalg.norm(self.data.xpos[self.model.body(name='object_0').id] - self.data.xpos[self.model.body(name='target_0').id])
-        obj_targ_r_1 =  quaternion_distance(self.data.xquat[self.planner.hande_id_1], jnp.array([0, -0.7071, -0.7071, 0]))
-        obj_targ_r_0 =  quaternion_distance(self.data.xquat[self.planner.hande_id_0], jnp.array([0, -0.7071, -0.7071, 0]))
-        obj_targ_r = np.array([obj_targ_r_0, obj_targ_r_1])
+        cost_g_place = np.linalg.norm(self.data.xpos[self.model.body(name='object_0').id] - self.data.xpos[self.model.body(name='target_0').id])
+        cost_r_1_place =  quaternion_distance(self.data.xquat[self.planner.hande_id_1], jnp.array([0, -0.7071, -0.7071, 0]))
+        cost_r_0_place =  quaternion_distance(self.data.xquat[self.planner.hande_id_0], jnp.array([0, -0.7071, -0.7071, 0]))
 
-        cost_g_home = np.linalg.norm(self.data.qpos[self.joint_mask_pos] - self.init_joint_position)
-
-        grasp_0 = (cost_g_0_pick < self.grab_pos_thresh and cost_r_0_pick < self.grab_rot_thresh)
-        grasp_1 = (cost_g_1_pick < self.grab_pos_thresh and cost_r_1_pick < self.grab_rot_thresh)
-
-        arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
+        cost_g_0_home = np.linalg.norm(self.data.qpos[self.joint_mask_pos][:6] - self.init_joint_position[:6])
+        cost_g_1_home = np.linalg.norm(self.data.qpos[self.joint_mask_pos][6:] - self.init_joint_position[6:])
 
         target_reached_pick = (
-            np.min([cost_g_0_pick, cost_g_1_pick]) < self.grab_pos_thresh \
-            and [cost_r_0_pick, cost_r_1_pick][arm_idx] < self.grab_rot_thresh 
+            cost_g_0_pick < self.grab_pos_thresh and cost_r_0_pick < self.grab_rot_thresh,
+            cost_g_1_pick < self.grab_pos_thresh and cost_r_1_pick < self.grab_rot_thresh 
         )
+
         target_reached_pass = (
             cost_g_pass < self.grab_pos_thresh \
             and cost_r_0_pass < self.grab_rot_thresh \
             and cost_r_1_pass < self.grab_rot_thresh
         )
         target_reached_place = (
-            obj_targ_g <= self.grab_pos_thresh \
-            and obj_targ_r[arm_idx] <= self.grab_rot_thresh
+            cost_g_place < self.grab_pos_thresh and cost_r_0_place < self.grab_rot_thresh,
+            cost_g_place < self.grab_pos_thresh and cost_r_1_place < self.grab_rot_thresh
         )
 
         target_reached_home = (
-            cost_g_home <= self.grab_pos_thresh 
+            cost_g_0_home < self.grab_pos_thresh, 
+            cost_g_1_home < self.grab_pos_thresh 
         )
 
-        if self.task=='pick' and target_reached_pick:
-            print("=============== PICK COMPLEATED =============== ")
-            self.task = 'pass'
-            if grasp_0:
-                self.gripper_0 = 1
-            elif grasp_1:
-                self.gripper_1 = 1
-        elif self.task=='pass' and target_reached_pass:
-            print("=============== PASS COMPLEATED =============== ")
-            self.task = 'place'
-            if self.gripper_0:
-                self.gripper_0 = 0
-                self.gripper_1 = 1
-            elif self.gripper_1:
-                self.gripper_0 = 1
-                self.gripper_1 = 0
-        elif self.task=='place' and target_reached_place:
-            print("=============== PLACE COMPLEATED =============== ")
-            self.task='home'
-            self.gripper_0 = 0
-            self.gripper_1 = 0
-        elif self.task=='home' and target_reached_home:
-            self.task = 'pick'
+        if (self.task_0 == 'pick' and target_reached_pick[0]) or (self.task_1 == 'pick' and target_reached_pick[1]):
+            self.planner.cost_weights['arm_0'][self.task_0] = 0
+            self.planner.cost_weights['arm_1'][self.task_1] = 0
+
+            self.task_0 = 'pass'
+            self.task_1 = 'pass'
+
+        elif self.task_0 == 'pass' and self.task_1 == 'pass' and target_reached_pass:
+            self.planner.cost_weights['arm_0'][self.task_0] = 0
+            self.planner.cost_weights['arm_1'][self.task_1] = 0
+            if self.arm_idx == 0:
+                self.task_0 = 'home'
+                self.task_1 = 'place'
+                self.arm_idx = 1
+            elif self.arm_idx == 1:
+                self.task_0 = 'place'
+                self.task_1 = 'home'
+                self.arm_idx = 0
+            
+        elif (self.task_0 == 'place' and target_reached_place[0]) or (self.task_1 == 'place' and target_reached_place[1]):
+            self.planner.cost_weights['arm_0'][self.task_0] = 0
+            self.planner.cost_weights['arm_1'][self.task_1] = 0
+
+            self.task_0 = 'home'
+            self.task_1 = 'home'
+
+        elif self.task_0 == 'home' and self.task_1 == 'home' and target_reached_home[0] and target_reached_home[1]:
+            self.planner.cost_weights['arm_0'][self.task_0] = 0
+            self.planner.cost_weights['arm_1'][self.task_1] = 0
+            
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_positions
             self.model.body(name='target_0').pos = bin_positions
             self.data.xpos[self.model.body(name='target_0').id] = bin_positions
             self.planner.target_0[:3] = bin_positions
+
+            cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - target_positions)
+            cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - target_positions)
+            self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
+
+            if self.arm_idx == 0:
+                self.task_0 = 'pick'
+            else:
+                self.task_1 = 'pick'
+
+        self.planner.cost_weights['arm_0'][self.task_0] = 1
+        self.planner.cost_weights['arm_1'][self.task_1] = 1
 
         if self.record_data_:    
             theta = self.data.qpos[self.joint_mask_pos]
@@ -370,23 +387,25 @@ class Planner(Node):
             # self.data_buffers['thetadot_planned_batched'].append(thd_batch[0].reshape((self.num_batch, self.num_dof, self.num_steps)).copy())
             # self.data_buffers['cost_cgr_batched'].append(cost_list_batch[0].copy())
             self.data_buffers['timestamp'].append(time.time())
+
+        self.viewer.cam.azimuth = self.angle
+        self.angle = (self.angle + 0.8) % 360 
         
         # Update viewer
         self.viewer.sync()
 
-        cost_c, cost_theta, cost_g, cost_r = cost_list
+        cost_c, cost_yz, cost_theta, cost_g, cost_r = cost_list
         
         # Print debug info
-        print(f'\n| Task: {self.task} '
+        print(f'\n| Task 0, 1: {self.task_0, self.task_1} '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
+              f'\n| Cost theta, yz: {"%.2f, %.2f"%(float(cost_theta), float(cost_yz))} '
               f'\n| Cost g: {"%.2f"%(float(cost_g))} '
-              f'\n| Cost theta: {"%.2f"%(float(cost_theta))} '
               f'\n| Cost r: {"%.2f"%(float(cost_r))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
-              f'\n| Cost g pass, place: {"%.2f, %.2f"%(float(cost_g_pass), float(obj_targ_g))} '
+              f'\n| Cost g pass, place: {"%.2f, %.2f"%(float(cost_g_pass), float(cost_g_place))} '
               f'\n| Cost gr0: {"%.2f, %.2f, %.2f"%(float(cost_g_0_pick), float(cost_r_0_pick), float(cost_r_0_pass))} '
               f'\n| Cost gr1: {"%.2f, %.2f, %.2f"%(float(cost_g_1_pick), float(cost_r_1_pick), float(cost_r_1_pass))} '
-            #   f'\n| Cost tr: {"%.2f, %.2f"%(float(current_cost_g_tray), float(current_cost_r_tray))} '
               f'\n| Cost: {np.round(cost, 2)} ', flush=True)
         
         time_until_next_step = self.model.opt.timestep - (time.time() - start_time)

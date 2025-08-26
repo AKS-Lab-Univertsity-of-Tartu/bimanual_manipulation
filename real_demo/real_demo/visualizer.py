@@ -124,15 +124,18 @@ class Visualizer(Node):
         # self.init_tray_pos = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
         # self.init_tray_quat = self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]].copy()
 
+        table_center = (self.model.body(name='table_0').pos+self.model.body(name='table_1').pos)/2
+
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         if self.use_hardware:
             self.viewer.cam.lookat[:] = [-3.0, 0.0, 0.8]     
         else:
-            self.viewer.cam.lookat[:] = [-0.0, 0.0, 0.8] #[0.0, 0.0, 0.8]  
-        self.viewer.cam.distance = 5.0 
-        self.viewer.cam.azimuth = 90.0 
-        self.viewer.cam.elevation = -30.0 
+            self.viewer.cam.lookat[:] = [table_center[0], table_center[1], 0.3] #[0.0, 0.0, 0.8]  
+        self.viewer.cam.distance = 3.0 
+        self.viewer.cam.azimuth = 0.0 
+        self.viewer.cam.elevation = -10.0 
+        self.angle = 0
 
         body_ids = range(self.model.nbody)
         body_names = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, i) for i in body_ids]
@@ -204,6 +207,10 @@ class Visualizer(Node):
         self.data.qvel = np.zeros(self.data.qvel.shape)
 
         mujoco.mj_step(self.model, self.data)
+
+        self.viewer.cam.azimuth = self.angle
+        self.angle = (self.angle + 1) % 360 
+
         self.viewer.sync()
 
         if self.record_data_:    
