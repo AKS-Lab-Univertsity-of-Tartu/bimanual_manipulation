@@ -79,6 +79,8 @@ class run_cem_planner:
         self.target_rot_2 = data.xquat[model.body(name="ball").id].copy()
         self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
+        self.ball_pick_init = self.target_2
+
         # Get obstacle reference
         self.obstacle_pos = data.mocap_pos[model.body_mocapid[model.body(name='obstacle').id]]
         self.obstacle_rot = data.mocap_quat[model.body_mocapid[model.body(name='obstacle').id]]
@@ -212,9 +214,12 @@ class run_cem_planner:
         if task == "pick":
             self.cost_weights['pick'] = 1
             self.cost_weights['move'] = 0
+            self.ball_pick_init = self.target_2
         elif task == 'move':
+            self.cost_weights['distance'] = 50.0
             self.cost_weights['pick'] = 0
             self.cost_weights['move'] = 1
+            self.ball_pick_init[2] = 2
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
@@ -227,6 +232,7 @@ class run_cem_planner:
             np.zeros(self.num_dof),  # Zero initial acceleration
             self.target_0,
             self.target_2,
+            self.ball_pick_init,
             self.lamda_init,
             self.s_init,
             self.xi_samples,

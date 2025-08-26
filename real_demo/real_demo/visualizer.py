@@ -262,8 +262,8 @@ class Visualizer(Node):
     def object0_callback(self, msg):
         pose = msg.pose
         tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.09])
-        self.model.body(name='tray').pos = tray_pos
-        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
+        # self.model.body(name='tray').pos = tray_pos
+        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
     def object1_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]

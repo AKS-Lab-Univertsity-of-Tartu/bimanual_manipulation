@@ -195,8 +195,9 @@ class cem_planner():
 		# self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
 		self.target_mocap_idx = self.model.body_mocapid[self.model.body(name='target_0').id]
 		self.ball_mocap_idx = self.model.body_mocapid[self.model.body(name='ball').id]
+		self.ball_pick_mocap_idx = self.model.body_mocapid[self.model.body(name='ball_pick').id]
 
-		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None))
+		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, None, None, None))
 		self.compute_boundary_vec_batch_single_dof = (jax.vmap(self.compute_boundary_vec_single_dof, in_axes = (0)  )) # vmap parrallelization takes place over first axis
 		self.compute_projection_batched_over_dof = jax.vmap(self.compute_projection_single_dof, in_axes=(0, 0, 0, 0, 0)) # vmap parrallelization takes place over first axis
@@ -665,7 +666,7 @@ class cem_planner():
 
 
 	@partial(jax.jit, static_argnums=(0,))
-	def compute_rollout_single(self, thetadot, init_pos, init_vel, target_0, ball_init):
+	def compute_rollout_single(self, thetadot, init_pos, init_vel, target_0, ball_init, ball_pick_init):
 
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
@@ -674,6 +675,7 @@ class cem_planner():
 		mocap_pos = mjx_data.mocap_pos.at[self.target_mocap_idx].set(target_0[:3])
 		mocap_quat = mjx_data.mocap_quat.at[self.target_mocap_idx].set(target_0[3:])
 		mocap_pos = mocap_pos.at[self.ball_mocap_idx].set(ball_init[:3])
+		mocap_pos = mocap_pos.at[self.ball_pick_mocap_idx].set(ball_pick_init[:3])
 		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos, mocap_quat=mocap_quat)
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
@@ -747,7 +749,7 @@ class cem_planner():
 
 		# Approach the ball with some offset
 		distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
-		cost_dist = jnp.sum((distances - 0.14)**2)
+		cost_dist = jnp.sum((distances - 0.19)**2)
 
 		# Distance between center point between two eef and object with the offset
 		center_point = (eef_0[:, :3]+eef_1[:, :3])/2
@@ -829,7 +831,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def cem_iter(self, carry,  scan_over):
 
-		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, cost_weights = carry
+		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights = carry
 
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
@@ -868,14 +870,14 @@ class cem_planner():
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
 
 
-		theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, ball, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, target_0, target_2)
+		theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, ball, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, target_0, target_2, ball_pick_init)
 		cost_batch, cost_list_batch = self.compute_cost_batch(theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, ball, collision, target_0, target_2, cost_weights)
 
 		xi_ellite, idx_ellite, cost_ellite = self.compute_ellite_samples(cost_batch, xi_samples)
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_0, target_2, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights)
 
 		return carry, (cost_batch, cost_list_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals, ball, eef_0, eef_1)
@@ -889,6 +891,7 @@ class cem_planner():
 		init_acc,
 		target_0,
 		target_2,
+		ball_pick_init,
 		lamda_init,
 		s_init,
 		xi_samples,
@@ -902,7 +905,7 @@ class cem_planner():
 		
 		key, subkey = jax.random.split(self.key)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights)
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)

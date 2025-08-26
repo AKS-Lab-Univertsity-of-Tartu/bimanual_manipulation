@@ -107,7 +107,7 @@ class Planner(Node):
 			'theta': 0.3,
 			'z-axis': 10.0,
             'velocity': 0.1,
-            'distance': 10.0,
+            'distance': 7.0,
 
             'allign': 2.0,
             'orientation': 7.0,
@@ -254,9 +254,13 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
+
         # if self.task=='move':
         #     center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
         #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
+        #     mujoco.mj_forward(self.model, self.data)
+        if self.task=='pick':
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]]
             
         
 
@@ -294,20 +298,13 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
 
-        if self.task=='move':
-            center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
-            mujoco.mj_forward(self.model, self.data)
-        elif self.task=='pick':
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]]
-
         self.render_trace(self.viewer, eef_0_planned[:,:3], eef_1_planned[:,:3])
 
         center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2
         cost_g = np.linalg.norm(center_pos - (self.data.xpos[self.model.body(name='ball').id]-np.array([0, 0, 0.05])))
 
         distances = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
-        cost_dist = (distances - 0.14)**2
+        cost_dist = (distances - 0.19)**2
 
         current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.183, -0.683, -0.683, 0.183]))
         current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.183, -0.683, 0.683, -0.183]))
@@ -319,7 +316,7 @@ class Planner(Node):
         if self.task=='pick':
             target_reached = (
                     cost_g < self.grab_pos_thresh \
-                    and cost_dist < 0.005 \
+                    and cost_dist < 0.001 \
                     and current_cost_r_0 < self.grab_rot_thresh \
                     and current_cost_r_1 < self.grab_rot_thresh
             )
@@ -348,7 +345,7 @@ class Planner(Node):
                 # else:
                 #     self.target_idx = 0
                 
-            if cost_g > 0.05:
+            if cost_g > 0.2:
                 self.task='pick'
             
 
@@ -394,6 +391,7 @@ class Planner(Node):
               f'\n| Cost eef to obj: {"%.2f, %.2f"%(float(cost_g), float(cost_g))} '
               f'\n| Cost obj to g: {"%.2f, %.2f"%(float(cost_g_ball), float(cost_g_ball))} '
               f'\n| Cost r, dist, z: {"%.2f, %.2f, %.2f"%(float(cost_r), float(cost_dist_mjx), float(cost_z))} '
+              f'\n| DIST: {"%.2f"%(float(distances))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
               f'\n| Cost dist: {"%.2f"%(float(cost_dist))} '
               f'\n| Cost gr0: {"%.2f"%(float(current_cost_r_0))} '
@@ -466,17 +464,13 @@ class Planner(Node):
     def object0_callback(self, msg):
         """Callback for target object pose updates"""
 
-        if self.task == 'pick':
-            pose = msg.pose
-            tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.09])
-            self.model.body(name='tray').pos = tray_pos
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
+        pose = msg.pose
+        ball_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.05])
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = ball_pos
             # mujoco.mj_forward(self.model, self.data)
             # self.planner.update_targets(target_idx=0, target_pos=self.data.xpos[self.model.body(name="target_00").id], target_rot=self.data.xquat[self.model.body(name="target_00").id])
             # self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_11").id], target_rot=self.data.xquat[self.model.body(name="target_11").id])
-
-            self.planner.update_targets(target_idx=0, target_pos=self.data.xpos[self.model.body(name="target_0").id], target_rot = self.model.body(name='target_0').quat)
-            self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_1").id], target_rot = self.model.body(name='target_1').quat)
+            # self.planner.target_2[:3] = ball_pos
 
     def obstacle0_callback(self, msg):
         """Callback for obstacle pose updates"""
