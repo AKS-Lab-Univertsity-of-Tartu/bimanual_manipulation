@@ -309,7 +309,7 @@ class Planner(Node):
         current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.183, -0.683, -0.683, 0.183]))
         current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.183, -0.683, 0.683, -0.183]))
 
-        cost_g_ball = np.linalg.norm(self.data.xpos[self.model.body(name='ball').id] - self.planner.target_0[:3])
+        cost_g_ball = np.linalg.norm(center_pos+np.array([0, 0, 0.05]) - self.planner.target_0[:3])
 
 
 
@@ -335,10 +335,8 @@ class Planner(Node):
                 # mujoco.mj_step(self.model, self.data)
 
                 # self.data.xpos[self.model.body(name='target_0').id] = self.data.xpos[self.model.body(name='ball').id] + np.array([0, 0, 0.15])
-                # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]][:2] = self.data.xpos[self.model.body(name='ball').id][:2]
-
-
-                # self.planner.target_0[:2] = self.data.xpos[self.model.body(name='ball').id][:2]
+                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]][1] += 0.5  
+                self.planner.target_0[:3] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]]
                 # self.model.body(name="target_0").pos = target_positions[self.target_idx]
                 # if self.target_idx<len(target_positions)-1:
                 #     self.target_idx+=1
