@@ -20,7 +20,7 @@ class run_cem_planner:
     def __init__(self, model, data, num_dof=12, num_batch=500, num_steps=20, 
                  maxiter_cem=1, maxiter_projection=5, num_elite=0.05, timestep=0.05,
                  position_threshold=0.1, rotation_threshold=0.1,
-                 ik_pos_thresh=0.07, ik_rot_thresh=0.1, 
+                 ik_pos_thresh=0.08, ik_rot_thresh=0.1, 
                  collision_free_ik_dt=7.0, inference=False, rnn=None,
                  max_joint_pos=180.0*np.pi/180.0, max_joint_vel=1.0, 
                  max_joint_acc=2.0, max_joint_jerk=4.0,
@@ -93,9 +93,10 @@ class run_cem_planner:
         # self.target_rot_2 = data.xquat[model.body(name="tray_mocap_target").id].copy()
         # self.target_2 = np.concatenate([self.target_pos_2, self.target_rot_2])
 
-        # Get obstacle reference
-        self.obstacle_pos = data.mocap_pos[model.body_mocapid[model.body(name='obstacle').id]]
-        self.obstacle_rot = data.mocap_quat[model.body_mocapid[model.body(name='obstacle').id]]
+        self.obst_init = np.concatenate([
+            self.data.xpos[self.model.body(name='obstacle').id],
+            self.data.xquat[self.model.body(name='obstacle').id]
+        ])
         
         # Get TCP references for both arms
         self.tcp_id_0 = model.site(name="tcp_0").id
@@ -224,15 +225,19 @@ class run_cem_planner:
             self.s_init = np.array(s_init_nn_output.cpu().detach().numpy())
 
 
-        self.obj_init = np.concatenate([
-            self.data.xpos[self.model.body(name='object_0').id],
-            self.data.xquat[self.model.body(name='object_0').id]
-        ])
+        # self.obj_init = np.concatenate([
+        #     self.data.xpos[self.model.body(name='object_0').id],
+        #     self.data.xquat[self.model.body(name='object_0').id]
+        # ])
+        # self.obst_init = np.concatenate([
+        #     self.data.xpos[self.model.body(name='obstacle').id],
+        #     self.data.xquat[self.model.body(name='obstacle').id]
+        # ])
 
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
-        self.xi_mean, self.xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
+        xi_mean, xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
         primal_res, fixed_res, idx_min = self.cem.compute_cem(
             self.xi_mean,
             self.xi_cov,
@@ -245,6 +250,7 @@ class run_cem_planner:
             self.xi_samples,
             self.cost_weights,
             self.obj_init,
+            self.obst_init
         )
 
         # Get mean velocity command (average middle 90% of trajectory)
@@ -272,7 +278,7 @@ class run_cem_planner:
             cost_g_1_pick < self.ik_pos_thresh and cost_r_1_pick < self.ik_rot_thresh 
         )
         target_reached_pass = (
-            cost_g_pass < self.ik_pos_thresh \
+            cost_g_pass <= 0.11 \
             and (cost_r_0_pass+cost_r_1_pass)/2 < self.ik_rot_thresh 
         )
 
@@ -289,21 +295,33 @@ class run_cem_planner:
 
             target_pos_1 = target_pos
             target_rot_1 = np.array([0.7071, 0, 0.7071, 0])
+
+        elif (task_0 == 'place' or task_1 == 'place') and target_reached_pass:
+            target_pos_0 = self.data.site_xpos[self.tcp_id_0] + np.array([0.05, 0, 0])
+            target_rot_0 = np.array([0.5, -0.5, -0.5,  0.5])
+
+            target_pos_1 = self.data.site_xpos[self.tcp_id_1] - np.array([0.05, 0, 0])
+            target_rot_1 = np.array([0.7071, 0, 0.7071, 0])
+
       
         joint_states = np.zeros(self.cem.joint_mask_pos.shape)
         joint_states[self.cem.joint_mask_pos] = current_pos
 
-        if (task_0 == 'pick' and target_reached_pick[0]) or (task_0 == 'pass' and target_reached_pass):
+        col_free_ik = False
+
+        if (task_0 == 'pick' and target_reached_pick[0]) or (task_0 == 'pass' and target_reached_pass) or ((task_0 == 'place' or task_1 == 'place') and target_reached_pass):
             # Arm 0 control
             print("Activated ik solution for arm 0")
+            col_free_ik = True
             ik_solver_0 = InverseKinematicsSolver(
                 self.model, joint_states, "tcp_0")
             ik_solver_0.set_target(target_pos_0, target_rot_0)
             thetadot_0 = ik_solver_0.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
             
-        if (task_1 == 'pick' and target_reached_pick[1]) or (task_1 == 'pass' and target_reached_pass):
+        if (task_1 == 'pick' and target_reached_pick[1]) or (task_1 == 'pass' and target_reached_pass) or ((task_0 == 'place' or task_1 == 'place') and target_reached_pass):
             # Arm 1 control
             print("Activated ik solution for arm 1")
+            col_free_ik = True
             ik_solver_1 = InverseKinematicsSolver(
                 self.model, joint_states, "tcp_1")
             ik_solver_1.set_target(target_pos_1, target_rot_1)
@@ -311,5 +329,9 @@ class run_cem_planner:
 
         # Combine control commands
         thetadot = np.concatenate((thetadot_0, thetadot_1))
+
+        if not col_free_ik:
+            self.xi_mean = xi_mean
+            self.xi_cov = xi_cov
         
         return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon

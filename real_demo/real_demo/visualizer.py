@@ -127,13 +127,13 @@ class Visualizer(Node):
         table_center = (self.model.body(name='table_0').pos+self.model.body(name='table_1').pos)/2
 
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-        self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+        # self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
         if self.use_hardware:
             self.viewer.cam.lookat[:] = [-3.0, 0.0, 0.8]     
         else:
             self.viewer.cam.lookat[:] = [table_center[0], table_center[1], 0.3] #[0.0, 0.0, 0.8]  
-        self.viewer.cam.distance = 3.0 
-        self.viewer.cam.azimuth = 0.0 
+        self.viewer.cam.distance = 5.0 
+        self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -10.0 
         self.angle = 0
 
@@ -184,8 +184,8 @@ class Visualizer(Node):
 
     def move_to_start(self):
         """Move robot to initial joint position"""
-        self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
-        self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
+        # self.rtde_c_0.moveJ(self.init_joint_position[:self.num_dof//2], asynchronous=False)
+        # self.rtde_c_1.moveJ(self.init_joint_position[self.num_dof//2:], asynchronous=False)
         print("Moved to initial pose.")
 
     def view_model(self):
@@ -208,8 +208,8 @@ class Visualizer(Node):
 
         mujoco.mj_step(self.model, self.data)
 
-        self.viewer.cam.azimuth = self.angle
-        self.angle = (self.angle + 1) % 360 
+        # self.viewer.cam.azimuth = self.angle
+        # self.angle = (self.angle + 1) % 360 
 
         self.viewer.sync()
 
@@ -279,7 +279,6 @@ class Visualizer(Node):
         self.model.body(name='table0_marker').pos = marker_pose
         self.viewer.cam.lookat[:] = self.model.body(name='table_0').pos
 
-        self.model.body(name='tray_mocap_target').pos += marker_diff
 
     def table1_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
@@ -291,12 +290,12 @@ class Visualizer(Node):
     def object0_callback(self, msg):
         pose = msg.pose
         tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.09])
-        self.model.body(name='tray').pos = tray_pos
-        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
+        # self.model.body(name='tray').pos = tray_pos
+        # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
 
     def object1_callback(self, msg):
         marker_pose =  [-msg.pose.position.x, -msg.pose.position.y, msg.pose.position.z]
-        self.model.body(name='target_1').pos = marker_pose
+        # self.model.body(name='target_1').pos = marker_pose
 
     def close_connection(self):
         if self.playback==False and self.use_hardware==True:

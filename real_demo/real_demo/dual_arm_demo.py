@@ -99,16 +99,17 @@ class Planner(Node):
 
         self.task_0 = 'home'
         self.task_1 = 'home'
+        self.arm_idx = -1
         self.target_idx = 0
         self.grasp = None
 
         cost_weights = {
             'collision': 500,
-			'theta': 1.0,
-            'cost_yz': 3.0,
+			'theta': 2.0,
+            'cost_yz': 0.0,
 
-            'position': 3.0,
-            'orientation': 1.0,
+            'position': 5.0,
+            'orientation': 0.5,
 
             'arm_0' : {
                 'pick': 0,
@@ -192,9 +193,9 @@ class Planner(Node):
             self.model.body(name='table_1').pos = setup['setup'][0][2]
             self.model.body(name='table1_marker').pos = setup['setup'][0][3]
 
-            self.model.body(name='tray').pos += marker_diff
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] += marker_diff
-            self.model.body(name='tray_mocap_target').pos += marker_diff
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] += marker_diff
+            self.model.body(name='target_0').pos += marker_diff
+            self.model.body(name='object_0').pos += marker_diff
 
         mujoco.mj_forward(self.model, self.data)
 
@@ -214,14 +215,14 @@ class Planner(Node):
             cost_weights=cost_weights
         )
 
-        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.xpos[self.model.body(name='object_0').id])
-        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.xpos[self.model.body(name='object_0').id])
-        self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
+        # cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.xpos[self.model.body(name='object_0').id])
+        # cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.xpos[self.model.body(name='object_0').id])
+        # self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
 
-        if self.arm_idx == 0:
-            self.task_0 = 'pick'
-        else:
-            self.task_1 = 'pick'
+        # if self.arm_idx == 0:
+        #     self.task_0 = 'pick'
+        # else:
+        #     self.task_1 = 'pick'
 
         self.planner.cost_weights['arm_0'][self.task_0] = 1
         self.planner.cost_weights['arm_1'][self.task_1] = 1
@@ -231,16 +232,16 @@ class Planner(Node):
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        self.viewer.cam.lookat[:] = [table_center[0], table_center[1], 0.3] #[0.0, 0.0, 0.8]  
-        self.viewer.cam.distance = 3.0 
-        self.viewer.cam.azimuth = 0.0 
-        self.viewer.cam.elevation = -10.0 
+        self.viewer.cam.lookat[:] = [table_center[0], table_center[1], 0.8] #[0.0, 0.0, 0.8]  
+        self.viewer.cam.distance = 5.0 
+        self.viewer.cam.azimuth = 90.0 
+        self.viewer.cam.elevation = -30.0 
         self.angle = 0
 
         # Setup subscribers
         qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
         self.subscription_object0 = self.create_subscription(PoseStamped, '/vrpn_mocap/object1/pose', self.object0_callback, qos_profile)
-        self.subscription_obstacle0 = self.create_subscription(PoseStamped, '/vrpn_mocap/obstacle1/pose', self.obstacle0_callback, qos_profile)
+        self.subscription_obstacle0 = self.create_subscription(PoseStamped, '/vrpn_mocap/obstacle/pose', self.obstacle0_callback, qos_profile)
         
         # Start control timer
         self.timer = self.create_timer(self.timestep, self.control_loop)
@@ -254,10 +255,7 @@ class Planner(Node):
         elif (self.task_1 == 'pass' or self.task_1 == 'place') and self.arm_idx == 1:
             self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_1]
 
-        self.planner.obj_init= np.concatenate([
-            self.data.xpos[self.model.body(name='object_0').id],
-            self.data.xquat[self.model.body(name='object_0').id]
-        ])
+        self.planner.obj_init[:3] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]]
 
         # Get current state
         if self.use_hardware:
@@ -283,9 +281,8 @@ class Planner(Node):
             # Update MuJoCo state
             current_pos = np.concatenate((np.array(self.rtde_r_0.getActualQ()), np.array(self.rtde_r_1.getActualQ())), axis=None)
             self.data.qpos[self.joint_mask_pos] = current_pos
-            # mujoco.mj_forward(self.model, self.data)
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
-            # self.data.qvel[self.joint_mask_vel] = self.thetadot
+            self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
         else:
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
@@ -332,6 +329,8 @@ class Planner(Node):
             self.planner.cost_weights['arm_0'][self.task_0] = 0
             self.planner.cost_weights['arm_1'][self.task_1] = 0
 
+            self.gripper_control(self.arm_idx, 'close')
+
             self.task_0 = 'pass'
             self.task_1 = 'pass'
 
@@ -339,10 +338,14 @@ class Planner(Node):
             self.planner.cost_weights['arm_0'][self.task_0] = 0
             self.planner.cost_weights['arm_1'][self.task_1] = 0
             if self.arm_idx == 0:
+                self.gripper_control(1, 'close')
+                self.gripper_control(0, 'open')
                 self.task_0 = 'home'
                 self.task_1 = 'place'
                 self.arm_idx = 1
             elif self.arm_idx == 1:
+                self.gripper_control(0, 'close')
+                self.gripper_control(1, 'open')
                 self.task_0 = 'place'
                 self.task_1 = 'home'
                 self.arm_idx = 0
@@ -351,6 +354,8 @@ class Planner(Node):
             self.planner.cost_weights['arm_0'][self.task_0] = 0
             self.planner.cost_weights['arm_1'][self.task_1] = 0
 
+            self.gripper_control(self.arm_idx, 'open')
+
             self.task_0 = 'home'
             self.task_1 = 'home'
 
@@ -358,13 +363,13 @@ class Planner(Node):
             self.planner.cost_weights['arm_0'][self.task_0] = 0
             self.planner.cost_weights['arm_1'][self.task_1] = 0
             
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_positions
-            self.model.body(name='target_0').pos = bin_positions
-            self.data.xpos[self.model.body(name='target_0').id] = bin_positions
-            self.planner.target_0[:3] = bin_positions
+            # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = target_positions
+            # self.model.body(name='target_0').pos = bin_positions
+            # self.data.xpos[self.model.body(name='target_0').id] = bin_positions
+            # self.planner.target_0[:3] = bin_positions
 
-            cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - target_positions)
-            cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - target_positions)
+            cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.obj_init[:3])
+            cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.obj_init[:3])
             self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
 
             if self.arm_idx == 0:
@@ -388,13 +393,13 @@ class Planner(Node):
             # self.data_buffers['cost_cgr_batched'].append(cost_list_batch[0].copy())
             self.data_buffers['timestamp'].append(time.time())
 
-        self.viewer.cam.azimuth = self.angle
-        self.angle = (self.angle + 0.8) % 360 
+        # self.viewer.cam.azimuth = self.angle
+        # self.angle = (self.angle + 0.8) % 360 
         
         # Update viewer
         self.viewer.sync()
 
-        cost_c, cost_yz, cost_theta, cost_g, cost_r = cost_list
+        cost_c, cost_theta, cost_yz, cost_g, cost_r = cost_list
         
         # Print debug info
         print(f'\n| Task 0, 1: {self.task_0, self.task_1} '
@@ -413,8 +418,9 @@ class Planner(Node):
             time.sleep(time_until_next_step) 
                 
     def gripper_control(self, gripper_idx=0, action='open'):
+        pos = 50 if gripper_idx == 0 else 100
         if self.use_hardware:
-            self.req.position = 250 if action == 'close' else 0
+            self.req.position = pos if action == 'close' else 0
             self.req.speed = 255
             self.req.force = 255
             resp = self.grippers[str(gripper_idx)]['srv'].call_async(self.req)
@@ -473,25 +479,19 @@ class Planner(Node):
 
     def object0_callback(self, msg):
         """Callback for target object pose updates"""
-
-        if self.task == 'pick':
+        if self.task_0 == 'pick' or self.task_1 == 'pick' or (self.task_0 == 'home' and self.task_1 == 'home'):
             pose = msg.pose
-            tray_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.09])
-            self.model.body(name='tray').pos = tray_pos
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = tray_pos
-            # mujoco.mj_forward(self.model, self.data)
-            # self.planner.update_targets(target_idx=0, target_pos=self.data.xpos[self.model.body(name="target_00").id], target_rot=self.data.xquat[self.model.body(name="target_00").id])
-            # self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_11").id], target_rot=self.data.xquat[self.model.body(name="target_11").id])
-
-            self.planner.update_targets(target_idx=0, target_pos=self.data.xpos[self.model.body(name="target_0").id], target_rot = self.model.body(name='target_0').quat)
-            self.planner.update_targets(target_idx=1, target_pos=self.data.xpos[self.model.body(name="target_1").id], target_rot = self.model.body(name='target_1').quat)
+            obj_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z])
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = obj_pos
+            self.planner.obj_init[:3] = obj_pos
 
     def obstacle0_callback(self, msg):
         """Callback for obstacle pose updates"""
         pose = msg.pose
-        obstacle_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z])
-        obstacle_rot = np.array([0.0, 1.0, 0, 0])
-        self.planner.update_obstacle(obstacle_pos, obstacle_rot)
+        obstacle_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.05])
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='obstacle').id]] = obstacle_pos
+        self.planner.obst_init[:3] = obstacle_pos
+
 
     def record_data(self):
         """Save data to npy file"""
