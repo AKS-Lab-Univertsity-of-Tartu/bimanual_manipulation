@@ -264,14 +264,14 @@ class run_cem_planner:
             thetadot = np.concatenate((thetadot_0, thetadot_1))
             return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon
 
-        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.data.xpos[self.model.body(name='object_0').id])
-        cost_r_0_pick = quaternion_distance(self.data.xquat[self.hande_id_0], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
+        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - (self.data.xpos[self.model.body(name='object_0').id]+np.array([0, 0, 0.02])))
+        cost_r_0_pick = quaternion_distance(self.data.xquat[self.hande_id_0], np.array([0, 0.7071, 0.7071, 0]))
         cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.data.xpos[self.model.body(name='object_0').id])
-        cost_r_1_pick = quaternion_distance(self.data.xquat[self.hande_id_1], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
+        cost_r_1_pick = quaternion_distance(self.data.xquat[self.hande_id_1], np.array([0, 0.7071, -0.7071, 0]))
 
         cost_g_pass = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.data.site_xpos[self.tcp_id_1])
         cost_r_0_pass = quaternion_distance(self.data.xquat[self.hande_id_0], np.array([0.5, -0.5, -0.5,  0.5]))
-        cost_r_1_pass = quaternion_distance(self.data.xquat[self.hande_id_1], np.array([0.7071, 0, 0.7071, 0]))
+        cost_r_1_pass = quaternion_distance(self.data.xquat[self.hande_id_1], np.array([0, 0.7071, 0, 0.7071]))
 
         target_reached_pick = (
             cost_g_0_pick < self.ik_pos_thresh and cost_r_0_pick < self.ik_rot_thresh,
@@ -283,25 +283,25 @@ class run_cem_planner:
         )
 
         if task_0 == 'pick' and target_reached_pick[0]:
-            target_pos_0 = self.data.xpos[self.model.body(name='object_0').id]
-            target_rot_0 = rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id])
+            target_pos_0 = self.data.xpos[self.model.body(name='object_0').id]+np.array([0, 0, 0.02])
+            target_rot_0 = np.array([0, 0.7071, 0.7071, 0])
         elif task_1 == 'pick' and target_reached_pick[1]:
-            target_pos_1 = self.data.xpos[self.model.body(name='object_0').id]
-            target_rot_1 = rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id])
+            target_pos_1 = self.data.xpos[self.model.body(name='object_0').id]-np.array([0, 0, 0.02])
+            target_rot_1 = np.array([0, 0.7071, -0.7071, 0])
         elif task_0 == 'pass' and task_1 == 'pass' and target_reached_pass:
             target_pos = (self.data.site_xpos[self.tcp_id_0]+self.data.site_xpos[self.tcp_id_1])/2
             target_pos_0 = target_pos
             target_rot_0 = np.array([0.5, -0.5, -0.5,  0.5])
 
             target_pos_1 = target_pos
-            target_rot_1 = np.array([0.7071, 0, 0.7071, 0])
+            target_rot_1 = np.array([0, 0.7071, 0, 0.7071])
 
         elif (task_0 == 'place' or task_1 == 'place') and target_reached_pass:
             target_pos_0 = self.data.site_xpos[self.tcp_id_0] + np.array([0.05, 0, 0])
             target_rot_0 = np.array([0.5, -0.5, -0.5,  0.5])
 
             target_pos_1 = self.data.site_xpos[self.tcp_id_1] - np.array([0.05, 0, 0])
-            target_rot_1 = np.array([0.7071, 0, 0.7071, 0])
+            target_rot_1 = np.array([0, 0.7071, 0, 0.7071])
 
       
         joint_states = np.zeros(self.cem.joint_mask_pos.shape)

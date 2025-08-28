@@ -183,8 +183,9 @@ def turn_quat(eef_pos_1_init, eef_pos_2_init, eef_pos_1, eef_pos_2, tray_rot_ini
 
 def main():
 
-    quat0 = np.array([1, 0, 0, 0])
-    quat1 = quaternion_multiply(quat0, rotation_quaternion(-180, [0, 1, 0])) # rotate wuaternion -180 degrees along y-axis
+    # quat0 = np.array([1, 0, 0, 0])
+    quat0 = np.array([0.7071, 0, 0.7071, 0])
+    quat1 = quaternion_multiply(quat0, rotation_quaternion(180, [1, 0, 0])) # rotate wuaternion -180 degrees along y-axis
     quat2 = quaternion_multiply(quat1, rotation_quaternion(-90, [0, 0, 1])) # rotate wuaternion -90 degrees along z-axis
     mat0 = quat_to_rotmat(quat2) # convert quaternion to rotation matrix
     quat3 = rotmat_to_quat(mat0) # convert rotation matrix back to quaternion

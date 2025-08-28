@@ -105,11 +105,11 @@ class Planner(Node):
 
         cost_weights = {
             'collision': 500,
-			'theta': 2.0,
+			'theta': 0.03,
             'cost_yz': 0.0,
 
             'position': 5.0,
-            'orientation': 0.5,
+            'orientation': 1,
 
             'arm_0' : {
                 'pick': 0,
@@ -289,14 +289,14 @@ class Planner(Node):
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
 
-        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.xpos[self.model.body(name='object_0').id])
-        cost_r_0_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_0], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
-        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.xpos[self.model.body(name='object_0').id])
-        cost_r_1_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_1], rotmat_to_quat(self.data.site_xmat[self.model.site(name="object_0_site_0").id]))
+        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - (self.data.xpos[self.model.body(name='object_0').id]+np.array([0, 0, 0.02])))
+        cost_r_0_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0, 0.7071, 0.7071, 0]))
+        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - (self.data.xpos[self.model.body(name='object_0').id]-np.array([0, 0, 0.02])))
+        cost_r_1_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0, 0.7071, -0.7071, 0]))
 
         cost_g_pass = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
         cost_r_0_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.5, -0.5, -0.5,  0.5]))
-        cost_r_1_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.7071, 0, 0.7071, 0]))
+        cost_r_1_pass = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0, 0.7071, 0, 0.7071]))
 
         cost_g_place = np.linalg.norm(self.data.xpos[self.model.body(name='object_0').id] - self.data.xpos[self.model.body(name='target_0').id])
         cost_r_1_place =  quaternion_distance(self.data.xquat[self.planner.hande_id_1], jnp.array([0, -0.7071, -0.7071, 0]))
@@ -324,6 +324,21 @@ class Planner(Node):
             cost_g_0_home < self.grab_pos_thresh, 
             cost_g_1_home < self.grab_pos_thresh 
         )
+        if self.task_0 == 'pick' or self.task_1 == 'pick':
+            self.planner.cost_weights['arm_0'][self.task_0] = 0
+            self.planner.cost_weights['arm_1'][self.task_1] = 0
+
+            cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.obj_init[:3])
+            cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.obj_init[:3])
+            self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
+
+            if self.arm_idx == 0:
+                self.task_0 = 'pick'
+                self.task_1 = 'home'
+            else:
+                self.task_1 = 'pick'
+                self.task_0 = 'home'
+            
 
         if (self.task_0 == 'pick' and target_reached_pick[0]) or (self.task_1 == 'pick' and target_reached_pick[1]):
             self.planner.cost_weights['arm_0'][self.task_0] = 0
@@ -374,8 +389,10 @@ class Planner(Node):
 
             if self.arm_idx == 0:
                 self.task_0 = 'pick'
+                self.task_1 = 'home'
             else:
                 self.task_1 = 'pick'
+                self.task_0 = 'home'
 
         self.planner.cost_weights['arm_0'][self.task_0] = 1
         self.planner.cost_weights['arm_1'][self.task_1] = 1
@@ -488,7 +505,7 @@ class Planner(Node):
     def obstacle0_callback(self, msg):
         """Callback for obstacle pose updates"""
         pose = msg.pose
-        obstacle_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.05])
+        obstacle_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z-0.1])
         self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='obstacle').id]] = obstacle_pos
         self.planner.obst_init[:3] = obstacle_pos
 

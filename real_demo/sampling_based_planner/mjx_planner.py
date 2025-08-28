@@ -620,7 +620,7 @@ class cem_planner():
 		''' Common cost for both tasks '''
 
 		# Compute collision cost
-		y = 0.1 # Higher y implies stricter condition on g to be positive
+		y = 0.05 # Higher y implies stricter condition on g to be positive
 		collision = collision.T
 		g = -collision[:, 1:]+(1 - y)*collision[:, :-1]
 		cost_c = jnp.sum(jnp.maximum(g, 0)) + jnp.sum(collision < 0)
@@ -634,7 +634,8 @@ class cem_planner():
 		# PICK
 		cost_g_0_pick = jnp.sum(jnp.linalg.norm(eef_0[:, :3] - (obj_0[:, :3]+jnp.array([0, 0, 0.07])), axis=1))
 
-		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, (obj_0[:, 3:]/jnp.linalg.norm(obj_0[:, 3:], axis=1).reshape(1, self.num).T).T))
+		target_rot_0 = jnp.array([0, 0.7071, 0.7071, 0])
+		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_0_pick = jnp.sum(2 * jnp.arccos(dot_product))
 
@@ -663,7 +664,8 @@ class cem_planner():
 		# PICK
 		cost_g_1_pick = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - (obj_0[:, :3]+jnp.array([0, 0, 0.07])), axis=1))
 
-		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, (obj_0[:, 3:]/jnp.linalg.norm(obj_0[:, 3:], axis=1).reshape(1, self.num).T).T))
+		target_rot_1 = jnp.array([0, 0.7071, -0.7071, 0])
+		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_rot_1/jnp.linalg.norm(target_rot_1)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_1_pick = jnp.sum(2 * jnp.arccos(dot_product))
 
@@ -672,7 +674,7 @@ class cem_planner():
 		cost_g_1_pass = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - self.pass_pos_1, axis=1))
 
 
-		target_rot_1 = jnp.array([0.7071, 0, 0.7071, 0]) # 0.5 -0.5  0.5 -0.5
+		target_rot_1 = jnp.array([0, 0.7071, 0, 0.7071]) # 0.5 -0.5  0.5 -0.5
 		dot_product = jnp.abs(jnp.dot(eef_1[:, 3:]/jnp.linalg.norm(eef_1[:, 3:], axis=1).reshape(1, self.num).T, target_rot_1/jnp.linalg.norm(target_rot_1)))
 		dot_product = jnp.clip(dot_product, -1.0, 1.0)
 		cost_r_1_pass = jnp.sum(2 * jnp.arccos(dot_product))
@@ -689,10 +691,10 @@ class cem_planner():
 
 		cost_list = jnp.array([
 			cost_weights['collision']*cost_c,
-			cost_weights['theta']*(
-				cost_theta +
-				cost_weights['arm_0']['home']*cost_theta_0_home +
-				cost_weights['arm_1']['home']*cost_theta_1_home
+			(
+				cost_weights['theta']*cost_theta +
+				3*cost_weights['arm_0']['home']*cost_theta_0_home +
+				3*cost_weights['arm_1']['home']*cost_theta_1_home
 			),
 			cost_weights['cost_yz']*(
 				cost_weights['arm_0']['pass']*cost_weights['arm_1']['pass']*cost_yz

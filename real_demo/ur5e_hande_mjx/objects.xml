@@ -67,7 +67,7 @@
     </body>
 
     <body mocap="true" name="obstacle" pos="-1 0 2" quat="0 0.70711 0.70711 0">
-        <geom name="obstacle" pos="0 0 0" rgba="0.6 0 0 1" size="0.1" type="sphere" contype="2" conaffinity="0"/>
+        <geom name="obstacle" pos="0 0 0" rgba="0.6 0 0 1" size="0.12" type="sphere" contype="2" conaffinity="0"/>
     </body>
 
     <body name="table0_marker" pos="-0.471 -0.550 0.05" >
