@@ -116,7 +116,7 @@ class cem_planner():
 		self.g = 10
 		self.vec_product = jax.jit(jax.vmap(self.comp_prod, 0, out_axes=(0)))
 
-		self.model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
+		# self.model_path = os.path.join(get_package_share_directory('real_demo'), 'ur5e_hande_mjx', 'scene.xml')
 		# self.model = mujoco.MjModel.from_xml_path(self.model_path)
 		self.model = model
 		self.data = mujoco.MjData(self.model)
@@ -208,7 +208,7 @@ class cem_planner():
 	def print_info(self):
 		print(
 			f'\n Default backend: {jax.default_backend()}'
-			f'\n Model path: {self.model_path}',
+			# f'\n Model path: {self.model_path}',
 			f'\n Timestep: {self.t}',
 			f'\n CEM Iter: {self.maxiter_cem}',
 			f'\n Projection Iter: {self.maxiter_projection}',
