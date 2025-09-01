@@ -46,7 +46,7 @@ class cem_planner():
 		self.nvar_single = jnp.shape(self.P_jax)[1]
 		self.nvar = self.nvar_single*self.num_dof 
   
-		self.rho_ineq = 1.0
+		self.rho_ineq = 5.0
 		self.rho_projection = 1.0
 
 		self.A_projection_single_dof = jnp.identity(self.nvar_single)
