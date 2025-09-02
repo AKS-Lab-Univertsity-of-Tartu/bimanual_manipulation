@@ -831,7 +831,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def cem_iter(self, carry,  scan_over):
 
-		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights = carry
+		xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights, filter = carry
 
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
@@ -848,7 +848,7 @@ class cem_planner():
 		s_init_reshaped = s_init.reshape(self.num_batch, self.num_dof, self.num_total_constraints_per_dof )
 		s_init_batched_over_dof = jnp.transpose(s_init_reshaped, (1, 0, 2)) # shape: (DoF, B, num_total_constraints_per_dof)
 
-
+        
 		
         # Pass all arguments as positional arguments; not keyword arguments
 		xi_filtered, primal_residuals, fixed_point_residuals = self.compute_projection_batched_over_dof(
@@ -866,8 +866,18 @@ class cem_planner():
 		avg_res_primal = jnp.sum(primal_residuals, axis = 0)/self.maxiter_projection
     	
 		avg_res_fixed_point = jnp.sum(fixed_point_residuals, axis = 0)/self.maxiter_projection
-
-		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
+        
+		# if filter:
+		# 	thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
+		# else:
+		# 	thetadot = jnp.dot(self.A_thetadot, xi_samples.T).T
+		
+		thetadot = jax.lax.cond(
+			filter,
+			lambda _: jnp.dot(self.A_thetadot, xi_filtered.T).T,  # true branch
+			lambda _: jnp.dot(self.A_thetadot, xi_samples.T).T,    # false branch
+			operand=None
+			)
 
 
 		theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, ball, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, target_0, target_2, ball_pick_init)
@@ -877,7 +887,7 @@ class cem_planner():
 		xi_mean, xi_cov = self.compute_mean_cov(cost_ellite, xi_mean_prev, xi_cov_prev, xi_ellite)
 		xi_samples_new, key = self.compute_xi_samples(key, xi_mean, xi_cov)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples_new, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights, filter)
 
 		return carry, (cost_batch, cost_list_batch, thetadot, theta, 
 				 avg_res_primal, avg_res_fixed_point, primal_residuals, fixed_point_residuals, ball, eef_0, eef_1)
@@ -896,6 +906,7 @@ class cem_planner():
 		s_init,
 		xi_samples,
 		cost_weights,
+		filter
 		):
 
 
@@ -905,7 +916,7 @@ class cem_planner():
 		
 		key, subkey = jax.random.split(self.key)
 
-		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights)
+		carry = (xi_mean, xi_cov, key, state_term, lamda_init, s_init, xi_samples, init_pos, init_vel, target_0, target_2, ball_pick_init, cost_weights, filter)
 		scan_over = jnp.array([0]*self.maxiter_cem)
 		
 		carry, out = jax.lax.scan(self.cem_iter, carry, scan_over, length=self.maxiter_cem)
