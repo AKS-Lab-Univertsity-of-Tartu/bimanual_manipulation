@@ -736,7 +736,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_xi_samples(self, key, xi_mean, xi_cov ):
 		key, subkey = jax.random.split(key)
-		xi_samples = jax.random.multivariate_normal(key, xi_mean, xi_cov+0.003*jnp.identity(self.nvar), (self.num_batch, ))
+		xi_samples = jax.random.multivariate_normal(key, xi_mean, xi_cov+0.00003*jnp.identity(self.nvar), (self.num_batch, ))
 		return xi_samples, key
 	
 	@partial(jax.jit, static_argnums=(0,))

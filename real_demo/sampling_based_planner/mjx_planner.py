@@ -736,7 +736,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_xi_samples(self, key, xi_mean, xi_cov ):
 		key, subkey = jax.random.split(key)
-		xi_samples = jax.random.multivariate_normal(key, xi_mean, xi_cov+0.003*jnp.identity(self.nvar), (self.num_batch, ))
+		xi_samples = jax.random.multivariate_normal(key, xi_mean, xi_cov+0.00003*jnp.identity(self.nvar), (self.num_batch, ))
 		return xi_samples, key
 	
 	@partial(jax.jit, static_argnums=(0,))
@@ -798,6 +798,7 @@ class cem_planner():
 		avg_res_fixed_point = jnp.sum(fixed_point_residuals, axis = 0)/self.maxiter_projection
 
 		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
+		# thetadot = jnp.dot(self.A_thetadot, xi_samples.T).T
 
 
 		theta, eef_0, eef_1, obj, obj_0, obj_1, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, obj_init, obst_init)
