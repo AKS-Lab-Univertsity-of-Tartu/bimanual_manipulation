@@ -254,11 +254,11 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
+        if self.task=='move':
+            center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
+            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
+            mujoco.mj_forward(self.model, self.data)
 
-        # if self.task=='move':
-        #     center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
-        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
-        #     mujoco.mj_forward(self.model, self.data)
         if self.task=='pick':
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]]
             
