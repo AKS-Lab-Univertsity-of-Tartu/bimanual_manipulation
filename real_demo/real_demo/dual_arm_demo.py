@@ -252,6 +252,28 @@ class Planner(Node):
         
         # Start control timer
         self.timer = self.create_timer(self.timestep, self.control_loop)
+    
+    def render_trace(self, viewer_, *eef_trace_positions):
+
+        """Render the end-effector trajectory trace in the viewer."""
+        # Clear any existing overlay geoms
+        viewer_.user_scn.ngeom = 0
+        for trace in eef_trace_positions:
+            # Add spheres for each position in the trace
+            for pos in trace:
+                # Create a new geom in the user scene
+                geom_id = viewer_.user_scn.ngeom
+                viewer_.user_scn.ngeom += 1
+    
+                # Initialize the geom properties
+                mujoco.mjv_initGeom(
+                    viewer_.user_scn.geoms[geom_id],
+                    type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                    size=[0.01, 0.01, 0.01],  # radius 1 cm sphere
+                    pos=pos,
+                    mat=np.eye(3).flatten(),
+                    rgba=[0, 0, 1, 0.5]  
+                )
 
     def control_loop(self):
         """Main control loop running at fixed interval"""
@@ -286,7 +308,7 @@ class Planner(Node):
         
         
         # Compute control
-        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon = self.planner.compute_control(current_pos, current_vel, self.task)
+        self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon, eef_0_planned, eef_1_planned = self.planner.compute_control(current_pos, current_vel, self.task)
         
         if self.use_hardware:
             # Send velocity command
@@ -301,6 +323,8 @@ class Planner(Node):
             self.data.qvel[:] = np.zeros(len(self.joint_mask_vel))
             self.data.qvel[self.joint_mask_vel] = self.thetadot
             mujoco.mj_step(self.model, self.data)
+        
+        self.render_trace(self.viewer, eef_0_planned[:,:3], eef_1_planned[:,:3])
 
         current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.target_0[:3])
         current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], self.planner.target_0[3:])
