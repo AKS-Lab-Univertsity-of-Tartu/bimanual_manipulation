@@ -238,7 +238,7 @@ class run_cem_planner:
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \
         xi_mean, xi_cov, thd_all, th_all, avg_primal_res, avg_fixed_res, \
-        primal_res, fixed_res, idx_min = self.cem.compute_cem(
+        primal_res, fixed_res, idx_min, eef_0_planned, eef_1_planned, _, _ = self.cem.compute_cem(
             self.xi_mean,
             self.xi_cov,
             current_pos,
@@ -334,4 +334,4 @@ class run_cem_planner:
             self.xi_mean = xi_mean
             self.xi_cov = xi_cov
         
-        return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon
+        return thetadot, cost, best_cost_list, thetadot_horizon, theta_horizon, eef_0_planned, eef_1_planned
