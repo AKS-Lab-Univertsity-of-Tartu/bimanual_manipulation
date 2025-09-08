@@ -165,17 +165,17 @@ class cem_planner():
 
 		ball_geom_id = np.array([mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball')])
 
-		wall_geom_id = np.array([
-				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball'),
-				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'wall_0'),
-				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball_pick'),
-			])
+		# wall_geom_id = np.array([
+		# 		mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball'),
+		# 		# mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'wall_0'),
+		# 		# mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball_pick'),
+		# 	])
 		# self.geom_ids_all = np.concatenate([self.geom_ids_all, target_geom_id])
 		ball_mask = ~jnp.any(jnp.isin(self.mjx_data.contact.geom, ball_geom_id), axis=1)
-		wall_mask = jnp.all(jnp.isin(self.mjx_data.contact.geom, wall_geom_id), axis=1)
-		wall_mask = jnp.logical_or(ball_mask, wall_mask)
+		# wall_mask = jnp.all(jnp.isin(self.mjx_data.contact.geom, wall_geom_id), axis=1)
+		# wall_mask = jnp.logical_or(ball_mask, wall_mask)
 		self.mask_move = jnp.logical_and(ball_mask, self.mask)
-		self.mask_move = jnp.logical_or(wall_mask, self.mask_move)
+		# self.mask_move = jnp.logical_or(wall_mask, self.mask_move)
 
 		self.mask = jnp.tile(self.mask, (self.num, 1))
 		self.mask_move = jnp.tile(self.mask_move, (self.num, 1))
@@ -192,10 +192,10 @@ class cem_planner():
 
 		self.target_0_id = self.model.body(name="target_0").id
 		self.ball_id = self.model.body(name="ball").id
-		# self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
+		self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
 		self.target_mocap_idx = self.model.body_mocapid[self.model.body(name='target_0').id]
-		self.ball_mocap_idx = self.model.body_mocapid[self.model.body(name='ball').id]
-		self.ball_pick_mocap_idx = self.model.body_mocapid[self.model.body(name='ball_pick').id]
+		# self.ball_mocap_idx = self.model.body_mocapid[self.model.body(name='ball').id]
+		# self.ball_pick_mocap_idx = self.model.body_mocapid[self.model.body(name='ball_pick').id]
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, None, None, None))
@@ -611,14 +611,15 @@ class cem_planner():
 		collision = mjx_data.contact.dist
 
 		# Set tray position and orientatio
-		ball = jnp.concatenate([mjx_data.xpos[self.ball_id]	, mjx_data.xquat[self.ball_id]])
+		# ball = jnp.concatenate([mjx_data.xpos[self.ball_id]	, mjx_data.xquat[self.ball_id]])
 		# ball = jnp.concatenate([mjx_data.qpos[self.ball_qpos_idx : self.ball_qpos_idx + 3], mjx_data.xquat[self.ball_id]])
+		ball = mjx_data.qpos[self.ball_qpos_idx : self.ball_qpos_idx + 7]
 
-		ball_pos = (eef_pos_0+eef_pos_1)/2 + jnp.array([0, 0, 0.05])
-		mocap_pos = mjx_data.mocap_pos.at[self.ball_mocap_idx].set(ball_pos)
-		mjx_data = mjx_data.replace(mocap_pos=mocap_pos)
+		# ball_pos = (eef_pos_0+eef_pos_1)/2 + jnp.array([0, 0, 0.05])
+		# mocap_pos = mjx_data.mocap_pos.at[self.ball_mocap_idx].set(ball_pos)
+		# mjx_data = mjx_data.replace(mocap_pos=mocap_pos)
 
-		ball = jnp.concatenate([ball_pos, mjx_data.xquat[self.ball_id]])
+		# ball = jnp.concatenate([ball_pos, mjx_data.xquat[self.ball_id]])
 
 		
 
@@ -671,12 +672,12 @@ class cem_planner():
 		mjx_data = self.mjx_data
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
-		# qpos = qpos.at[self.ball_qpos_idx : self.ball_qpos_idx + 3].set(ball_init[:3])
-		mocap_pos = mjx_data.mocap_pos.at[self.target_mocap_idx].set(target_0[:3])
-		mocap_quat = mjx_data.mocap_quat.at[self.target_mocap_idx].set(target_0[3:])
-		mocap_pos = mocap_pos.at[self.ball_mocap_idx].set(ball_init[:3])
-		mocap_pos = mocap_pos.at[self.ball_pick_mocap_idx].set(ball_pick_init[:3])
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos, mocap_quat=mocap_quat)
+		qpos = qpos.at[self.ball_qpos_idx : self.ball_qpos_idx + 3].set(ball_init[:3])
+		# mocap_pos = mjx_data.mocap_pos.at[self.target_mocap_idx].set(target_0[:3])
+		# mocap_quat = mjx_data.mocap_quat.at[self.target_mocap_idx].set(target_0[3:])
+		# mocap_pos = mocap_pos.at[self.ball_mocap_idx].set(ball_init[:3])
+		# mocap_pos = mocap_pos.at[self.ball_pick_mocap_idx].set(ball_pick_init[:3])
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
@@ -749,7 +750,7 @@ class cem_planner():
 
 		# Approach the ball with some offset
 		distances = jnp.linalg.norm(eef_0[:, :3] - eef_1[:, :3], axis=1)
-		cost_dist = jnp.sum((distances - 0.19)**2)
+		cost_dist = jnp.sum((distances - 0.17)**2)
 
 		# Distance between center point between two eef and object with the offset
 		center_point = (eef_0[:, :3]+eef_1[:, :3])/2

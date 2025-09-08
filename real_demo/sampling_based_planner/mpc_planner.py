@@ -214,12 +214,11 @@ class run_cem_planner:
         if task == "pick":
             self.cost_weights['pick'] = 1
             self.cost_weights['move'] = 0
-            self.ball_pick_init = self.target_2
+            self.cost_weights['distance'] = 5.0
         elif task == 'move':
             self.cost_weights['distance'] = 50.0
             self.cost_weights['pick'] = 0
             self.cost_weights['move'] = 1
-            self.ball_pick_init[2] = 2
 
         # CEM computation
         cost, best_cost_list, thetadot_horizon, theta_horizon, \

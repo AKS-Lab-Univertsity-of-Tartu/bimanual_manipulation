@@ -107,19 +107,19 @@ class Planner(Node):
 			'theta': 0.3,
 			'z-axis': 10.0,
             'velocity': 0.1,
-            'distance': 7.0,
+            'distance': 5.0,
 
-            'allign': 2.0,
-            'orientation': 7.0,
-            'eef_to_obj': 10.0,
-            'obj_to_targ': 1.0,
+            # 'allign': 2.0,
+            'orientation': 3.0,
+            'eef_to_obj': 7.0,
+            'obj_to_targ': 10.0,
 
             'pick': 0,
             'move': 0
         }
 
         self.grab_pos_thresh = 0.02
-        self.grab_rot_thresh = 0.05
+        self.grab_rot_thresh = 0.1
         self.grab_dist_thresh = 0.05
         self.thetadot = np.zeros(self.num_dof)
 
@@ -194,6 +194,7 @@ class Planner(Node):
         mujoco.mj_forward(self.model, self.data)
 
         self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        self.ball_init_pos = self.data.qpos[self.ball_qpos_idx:self.ball_qpos_idx+7].copy()
         
 
         # Initialize CEM/MPC planner
@@ -254,13 +255,13 @@ class Planner(Node):
         """Main control loop running at fixed interval"""
         start_time = time.time()
 
-        if self.task=='move':
-            center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
-            mujoco.mj_forward(self.model, self.data)
+        # if self.task=='move':
+        #     center_pos = (self.data.site_xpos[self.planner.tcp_id_0]+self.data.site_xpos[self.planner.tcp_id_1])/2 + np.array([0, 0, 0.05])
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]] = center_pos
+        #     mujoco.mj_forward(self.model, self.data)
 
-        if self.task=='pick':
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]]
+        # if self.task=='pick':
+        #     self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball').id]]
             
         
 
@@ -304,7 +305,7 @@ class Planner(Node):
         cost_g = np.linalg.norm(center_pos - (self.data.xpos[self.model.body(name='ball').id]-np.array([0, 0, 0.05])))
 
         distances = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
-        cost_dist = (distances - 0.19)**2
+        cost_dist = np.abs(distances - 0.25)
 
         current_cost_r_0 = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0.183, -0.683, -0.683, 0.183]))
         current_cost_r_1 = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0.183, -0.683, 0.683, -0.183]))
@@ -316,54 +317,24 @@ class Planner(Node):
         if self.task=='pick':
             target_reached = (
                     cost_g < self.grab_pos_thresh \
-                    and cost_dist < 0.001 \
+                    and cost_dist < 0.02 \
                     and current_cost_r_0 < self.grab_rot_thresh \
                     and current_cost_r_1 < self.grab_rot_thresh
             )
 
             if target_reached:
-                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = np.array([0, 0, 2])
+                # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='ball_pick').id]] = np.array([0, 0, 2])
                 self.task = 'move'
 
         elif self.task == 'move':
             target_reached = cost_g_ball < 0.02
             if target_reached:
                 print("======================= TARGET REACHED =======================", flush=True)
-                # self.data.qpos[self.ball_qpos_idx : self.ball_qpos_idx+3] = init_positions[self.target_idx]
-                # self.data.qpos[self.joint_mask_pos] = self.init_joint_position
-                # self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
-                # mujoco.mj_step(self.model, self.data)
-
-                # self.data.xpos[self.model.body(name='target_0').id] = self.data.xpos[self.model.body(name='ball').id] + np.array([0, 0, 0.15])
-                self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]][1] += 0.5  
-                self.planner.target_0[:3] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]]
-                # self.model.body(name="target_0").pos = target_positions[self.target_idx]
-                # if self.target_idx<len(target_positions)-1:
-                #     self.target_idx+=1
-                # else:
-                #     self.target_idx = 0
+                self.reset_simulation()
                 
-            if cost_g > 0.2:
-                self.task='pick'
-            
-
-        # elif self.task=='move':
-        #     target_reached = (
-        #             current_cost_g_tray < self.grab_pos_thresh \
-        #             and current_cost_r_tray < self.grab_rot_thresh \
-        #     )
-        # elif target_reached and self.task=='move':
-        #     if self.use_hardware:
-        #         self.rtde_c_0.speedStop()
-        #         self.rtde_c_1.speedStop()
-        #         self.thetadot = np.zeros(self.thetadot.shape)
-        #     print("================== TARGRT REACHED UPDATING TARGET ==================")
-        #     # self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_pos
-        #     # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = self.tray_init_rot
-        #     # self.planner.target_2[:3] = self.tray_init_pos
-        #     # self.planner.target_2[3:] = self.tray_init_rot
-        #     if self.target_idx < len(target_positions)-1:
-        #         self.target_idx+=1
+            elif cost_g > 0.2:
+                print("======================= TARGET FAILED =======================", flush=True)
+                self.reset_simulation()
 
         if self.record_data_:    
             theta = self.data.qpos[self.joint_mask_pos]
@@ -399,6 +370,25 @@ class Planner(Node):
         time_until_next_step = self.model.opt.timestep - (time.time() - start_time)
         if time_until_next_step > 0:
             time.sleep(time_until_next_step) 
+
+    def reset_simulation(self):
+        self.task='pick'
+        self.planner.xi_cov = np.kron(np.eye(self.planner.cem.num_dof), 10*np.identity(self.planner.cem.nvar_single)) 
+        self.planner.xi_mean = np.zeros(self.planner.cem.nvar)
+        self.data.qpos[self.ball_qpos_idx : self.ball_qpos_idx+7] = self.ball_init_pos
+        self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
+
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = self.generate_targets()
+        self.planner.target_0[:3] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]]
+        mujoco.mj_step(self.model, self.data)
+
+    def generate_targets(self):
+        area_center_1 = np.array([-0.25, -0.1, 0.4])
+        area_size_1 = np.array([0.2, 0.3, 0.25])
+
+        target_pos = area_center_1 + np.random.uniform(-area_size_1, area_size_1, size=3)
+        return target_pos
                 
     def gripper_control(self, gripper_idx=0, action='open'):
         if self.use_hardware:
