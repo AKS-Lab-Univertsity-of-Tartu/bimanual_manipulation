@@ -239,7 +239,7 @@ class run_cem_planner:
         )
 
         # Get mean velocity command (average middle 90% of trajectory)
-        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.5)], axis=0)
+        thetadot_cem = np.mean(thetadot_horizon[1:6], axis=0)
 
         thetadot_0 = thetadot_cem[:6]
         thetadot_1 = thetadot_cem[6:]
