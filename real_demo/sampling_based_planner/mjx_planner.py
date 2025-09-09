@@ -692,7 +692,7 @@ class cem_planner():
 		''' Common cost for both tasks '''
 
 		# Compute collision cost for pick
-		y = 0.15 # Higher y implies stricter condition on g to be positive
+		y = 0.1 # Higher y implies stricter condition on g to be positive
 		collision_pick = collision[self.mask]
 		collision_pick = collision_pick.reshape((self.num, len(collision_pick)//self.num)).T
 		g = -collision_pick[:, 1:]+(1 - y)*collision_pick[:, :-1]
