@@ -77,7 +77,7 @@ class Planner(Node):
         self.timestep = self.get_parameter('timestep').get_parameter_value().double_value
         position_threshold = self.get_parameter('position_threshold').get_parameter_value().double_value
         rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
-        self.num_targets = 11
+        self.num_targets = 21
 
         if self.record_data_:
             self.pathes = {
@@ -444,7 +444,7 @@ class Planner(Node):
 
     def generate_targets(self):
         area_center_1 = np.array([-0.25, -0.1, 0.3])
-        area_size_1 = np.array([0.15, 0.2, 0.2])
+        area_size_1 = np.array([0.15, 0.15, 0.1])
 
         target_pos = area_center_1 + np.random.uniform(-area_size_1, area_size_1, size=3)
         return target_pos
