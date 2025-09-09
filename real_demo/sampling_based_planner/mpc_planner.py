@@ -255,29 +255,35 @@ class run_cem_planner:
         if task == "pick":
 
             # Check if we should switch to collision-free IK for each arm
-            current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.target_pos_0)
-            current_cost_r_0 = quaternion_distance(self.data.xquat[self.hande_id_0], self.target_rot_0)
+            current_cost_g_0 = np.linalg.norm(self.data.site_xpos[self.tcp_id_0] - self.target_0[:3])
+            current_cost_r_0 = quaternion_distance(self.data.xquat[self.hande_id_0], self.target_0[3:])
                 
-            current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.target_pos_1)
-            current_cost_r_1 = quaternion_distance(self.data.xquat[self.hande_id_1], self.target_rot_1)
+            current_cost_g_1 = np.linalg.norm(self.data.site_xpos[self.tcp_id_1] - self.target_1[:3])
+            current_cost_r_1 = quaternion_distance(self.data.xquat[self.hande_id_1], self.target_1[3:])
             
             joint_states = np.zeros(self.cem.joint_mask_pos.shape)
             joint_states[self.cem.joint_mask_pos] = current_pos
 
+            target_reached = (
+                current_cost_g_0 < self.ik_pos_thresh 
+                and current_cost_r_0 < self.ik_rot_thresh
+                and current_cost_g_1 < self.ik_pos_thresh 
+                and current_cost_r_1 < self.ik_rot_thresh
+            )
+
             # Arm 0 control
-            if current_cost_g_0 < self.ik_pos_thresh and current_cost_r_0 < self.ik_rot_thresh:
+            if target_reached:
                 print("Activated ik solution for arm 0")
                 ik_solver_0 = InverseKinematicsSolver(
                     self.model, joint_states, "tcp_0")
-                ik_solver_0.set_target(self.target_pos_0, self.target_rot_0)
+                ik_solver_0.set_target(self.target_0[:3], self.target_0[3:])
                 thetadot_0 = ik_solver_0.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][:self.num_dof//2]
             
             # Arm 1 control
-            if current_cost_g_1 < self.ik_pos_thresh and current_cost_r_1 < self.ik_rot_thresh:
                 print("Activated ik solution for arm 1")
                 ik_solver_1 = InverseKinematicsSolver(
                     self.model, joint_states, "tcp_1")
-                ik_solver_1.set_target(self.target_pos_1, self.target_rot_1)
+                ik_solver_1.set_target(self.target_1[:3], self.target_1[3:])
                 thetadot_1 = ik_solver_1.solve(dt=self.collision_free_ik_dt)[self.cem.joint_mask_vel][self.num_dof//2:]
 
         # Combine control commands

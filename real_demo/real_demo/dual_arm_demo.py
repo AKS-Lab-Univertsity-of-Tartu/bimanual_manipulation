@@ -30,8 +30,9 @@ target_positions = np.array([
 
 target_rotations = np.array([
     quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-90, [0, 0, 1])),
-    quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-135, [0, 0, 1])),
+    # quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-135, [0, 0, 1])),
     quaternion_multiply(np.array([1, 0, 0, 0]), rotation_quaternion(-45, [0, 0, 1])),
+    np.array([1, 0, 0, 0])
 ])
 
 class Planner(Node):
@@ -58,11 +59,11 @@ class Planner(Node):
         self.use_hardware = self.get_parameter('use_hardware').get_parameter_value().bool_value
         self.record_data_ = self.get_parameter('record_data').get_parameter_value().bool_value
         self.idx = self.get_parameter('idx').get_parameter_value().integer_value
-        self.idx = str(self.idx).zfill(3)
+        self.idx = str(self.idx).zfill(2)
 
         # Planner params
         self.num_dof = 12
-        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
+        self.init_joint_position = np.array([1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0])
         num_batch = self.get_parameter('num_batch').get_parameter_value().integer_value
         num_steps = self.get_parameter('num_steps').get_parameter_value().integer_value
         maxiter_cem = self.get_parameter('maxiter_cem').get_parameter_value().integer_value
@@ -75,29 +76,35 @@ class Planner(Node):
         position_threshold = self.get_parameter('position_threshold').get_parameter_value().double_value
         rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
 
+        self.num_targets = 21
+
         if self.record_data_:
             self.pathes = {
                 "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{self.idx}.npz'),
                 "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'traj_{self.idx}.npz'),
+                "benchmark": os.path.join(PACKAGE_DIR, 'data', 'planner', 'benchmark', f'bench_{num_batch}_{num_steps}_19{self.idx}.npz'),
             }
-
-            # Store data in lists during runtime
             self.data_buffers = {
-                'setup': [],
-                'theta': [],
-                'thetadot': [],
-                'theta_planned': [],
-                'thetadot_planned': [],
-                'target_0': [],
-                'target_1': [],
-                'theta_planned_batched': [],
-                'thetadot_planned_batched': [],
-                'cost_cgr_batched': [],
-                'timestamp': [],
-            }
+                'batch_size': [num_batch],
+                'horizon': [num_steps],
 
+                'target_0': [0]*self.num_targets,
+                'total_time_s': [0]*self.num_targets,
+                'success': [0]*self.num_targets,
+                'reason': [0]*self.num_targets,
+
+                'step_time_ms': [[] for _ in range(self.num_targets)],
+                'theta': [[] for _ in range(self.num_targets)],
+                'thetadot': [[] for _ in range(self.num_targets)],
+
+                'cost_r': [[] for _ in range(self.num_targets)],
+                'cost_eef_to_obj': [[] for _ in range(self.num_targets)],
+                'cost_obj_to_targ': [[] for _ in range(self.num_targets)],
+                'cost_dist': [[] for _ in range(self.num_targets)],
+                'cost_zy': [[] for _ in range(self.num_targets)],
+            }
+            
         self.task = 'pick'
-        self.target_idx = 0
 
         cost_weights = {
             'collision': 500,
@@ -109,7 +116,7 @@ class Planner(Node):
             'orientation_pick': 0.5,
 
             'distance': 20.0,
-            'position_tray': 3.0,
+            'position_tray': 10.0,
             'orientation_tray': 2,
             'orientation_move': 10,
 
@@ -172,13 +179,13 @@ class Planner(Node):
 
         target_0_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_0").quat, rotation_quaternion(-180, [0, 1, 0])), rotation_quaternion(-90, [0, 0, 1]))
         target_1_rot = quaternion_multiply(quaternion_multiply(self.model.body(name="target_1").quat, rotation_quaternion(180, [0, 1, 0])), rotation_quaternion(90, [0, 0, 1]))
-        target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
+        # target_2_rot = quaternion_multiply(self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]], rotation_quaternion(-45, [0, 0, 1]))
 
         self.model.body(name='target_0').quat = target_0_rot
         self.model.body(name='target_1').quat = target_1_rot
         self.model.body(name='target_00').quat = target_0_rot
         self.model.body(name='target_11').quat = target_1_rot
-        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_2_rot
+        # self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = target_2_rot
 
         # Set the table positions alligmed with the motion capture coordinate system
 
@@ -218,6 +225,14 @@ class Planner(Node):
         #     table_1_pos = self.model.body(name='table_1').pos
 
         mujoco.mj_forward(self.model, self.data)
+
+        self.tray_init_pos = np.concatenate([self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]],
+                                            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]]])
+        
+        self.success = 0
+        self.reason = 'na'
+        self.traj_time_start = time.time()
+        self.target_idx = 0
 
         # Initialize CEM/MPC planner
         self.planner = run_cem_planner(
@@ -309,7 +324,8 @@ class Planner(Node):
         
         # Compute control
         self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon, eef_0_planned, eef_1_planned = self.planner.compute_control(current_pos, current_vel, self.task)
-        
+        cost_c, cost_dist, cost_g, cost_r = cost_list
+
         if self.use_hardware:
             # Send velocity command
             self.rtde_c_0.speedJ(self.thetadot[:self.planner.num_dof//2], acceleration=1, time=0.1)
@@ -337,6 +353,16 @@ class Planner(Node):
         current_cost_g_tray = np.linalg.norm(tray_pos - self.planner.target_2[:3])
         current_cost_r_tray = quaternion_distance(tray_rot, self.planner.target_2[3:])
 
+        distance = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
+        cost_dist_s = np.abs(distance - 0.30)
+
+        cost_z_s = np.abs(self.data.site_xpos[self.planner.tcp_id_0][2] - self.data.site_xpos[self.planner.tcp_id_1][2])
+
+        cost_r_s = np.mean([quaternion_distance(self.data.xquat[self.planner.hande_id_0], self.data.xquat[self.model.body(name="target_0").id]),
+                           quaternion_distance(self.data.xquat[self.planner.hande_id_1], self.data.xquat[self.model.body(name="target_1").id])])
+        cost_g_s = np.mean([np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.xpos[self.model.body(name="target_0").id]),
+                           np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.data.xpos[self.model.body(name="target_1").id])])
+
         if self.task=='pick':
             target_reached = (
                     current_cost_g_0 < self.grab_pos_thresh \
@@ -355,38 +381,67 @@ class Planner(Node):
             self.gripper_control(gripper_idx=0, action='close')
             self.gripper_control(gripper_idx=1, action='close')
         elif target_reached and self.task=='move':
-            print("================== TARGRT REACHED UPDATING TARGET ==================")
-            self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_positions[self.target_idx]
-            self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_rotations[self.target_idx]
-            self.planner.target_2[:3] = target_positions[self.target_idx]
-            self.planner.target_2[3:] = target_rotations[self.target_idx]
-            if self.target_idx < len(target_positions)-1:
-                self.target_idx+=1
+            print("================== TARGRT REACHED UPDATING TARGET ==================", flush=True)
+            self.success = 1
+            self.reason = 'na'
+            self.reset_simulation()
 
-        if self.record_data_:    
+        if self.task=='move' and cost_dist_s > 0.1:
+            print("================== FAILED: DISTANCE ==================", flush=True)
+            self.success = 0
+            self.reason = 'dist'
+            self.reset_simulation()
+        if self.task=='move' and cost_z_s > 0.05:
+            print("================== FAILED: Z ==================", flush=True)
+            self.success = 0
+            self.reason = 'z'
+            self.reset_simulation()
+
+        if self.task=='move' and cost_r_s > 0.2:
+            print("================== FAILED: Z ==================", flush=True)
+            self.success = 0
+            self.reason = 'rotation'
+            self.reset_simulation()
+        if cost_c > 300:
+            print("================== FAILED: COLLISION ==================", flush=True)
+            self.success = 0
+            self.reason = 'collision'
+            self.reset_simulation()
+
+        if time.time() - self.traj_time_start > 120:
+            print("======================= TARGET FAILED: TIMEOUT =======================", flush=True)
+            self.success = 0
+            self.reason = 'timeout'
+            self.reset_simulation()
+
+
+        if self.record_data_ and self.target_idx<self.num_targets:    
             theta = self.data.qpos[self.joint_mask_pos]
-            self.data_buffers['theta'].append(theta.copy())
-            self.data_buffers['thetadot'].append(self.thetadot.copy())
-            self.data_buffers['theta_planned'].append(theta_horizon.copy())
-            self.data_buffers['thetadot_planned'].append(thetadot_horizon.copy())
-            self.data_buffers['target_0'].append(self.planner.target_0.copy())
-            self.data_buffers['target_1'].append(self.planner.target_1.copy())
-            # self.data_buffers['theta_planned_batched'].append(th_batch[0].reshape((self.num_batch, self.num_dof, self.num_steps)).copy())
-            # self.data_buffers['thetadot_planned_batched'].append(thd_batch[0].reshape((self.num_batch, self.num_dof, self.num_steps)).copy())
-            # self.data_buffers['cost_cgr_batched'].append(cost_list_batch[0].copy())
-            self.data_buffers['timestamp'].append(time.time())
+            step_time_ms = (time.time() - start_time)*1000
+
+            self.data_buffers['step_time_ms'][self.target_idx].append(step_time_ms)
+            self.data_buffers['theta'][self.target_idx].append(theta.copy())
+            self.data_buffers['thetadot'][self.target_idx].append(self.thetadot.copy())
+
+            self.data_buffers['cost_r'][self.target_idx].append(cost_r_s.copy())
+            self.data_buffers['cost_eef_to_obj'][self.target_idx].append(cost_g_s.copy())
+            self.data_buffers['cost_obj_to_targ'][self.target_idx].append(current_cost_g_tray.copy())
+            self.data_buffers['cost_dist'][self.target_idx].append(cost_dist_s.copy())
+            self.data_buffers['cost_zy'][self.target_idx].append(cost_z_s.copy())
         
         # Update viewer
         self.viewer.sync()
-
-        cost_c, cost_dist, cost_g, cost_r = cost_list
         
         # Print debug info
-        print(f'\n| Task: {self.task} '
+        print(f'\n| Target idx: {self.target_idx} '
+              f'\n| Task: {self.task} '
+              f'\n| Total Time: {"%.0f"%(time.time() - self.traj_time_start)}ms '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
-              f'\n| Cost eq: {"%.2f"%(float(cost_dist))} '
-              f'\n| Cost g: {"%.2f"%(float(cost_g))} '
-              f'\n| Cost r: {"%.2f"%(float(cost_r))} '
+              f'\n| Cost dist: {"%.2f, %.2f"%(float(cost_dist), float(cost_dist_s))} '
+              f'\n| Cost z: {"%.2f"%(float(cost_z_s))} '
+              f'\n| Cost r: {"%.2f"%(float(cost_r_s))} '
+              f'\n| Cost g mjx: {"%.2f"%(float(cost_g))} '
+              f'\n| Cost r mjx: {"%.2f"%(float(cost_r))} '
               f'\n| Cost c: {"%.2f"%(float(cost_c))} '
               f'\n| Cost gr0: {"%.2f, %.2f"%(float(current_cost_g_0), float(current_cost_r_0))} '
               f'\n| Cost gr1: {"%.2f, %.2f"%(float(current_cost_g_1), float(current_cost_r_1))} '
@@ -396,6 +451,46 @@ class Planner(Node):
         time_until_next_step = self.model.opt.timestep - (time.time() - start_time)
         if time_until_next_step > 0:
             time.sleep(time_until_next_step) 
+
+    def reset_simulation(self):
+        if self.target_idx<self.num_targets:
+            self.data_buffers['success'][self.target_idx] = self.success
+            self.data_buffers['reason'][self.target_idx] = self.reason
+            self.data_buffers['total_time_s'][self.target_idx] = (time.time() - self.traj_time_start)
+            self.data_buffers['target_0'][self.target_idx] = self.planner.target_2.copy()
+
+        self.success = 0
+        self.reason = 'na'
+        self.traj_time_start = time.time()
+        self.target_idx += 1
+
+        self.task='pick'
+        self.planner.xi_cov = np.kron(np.eye(self.planner.cem.num_dof), 10*np.identity(self.planner.cem.nvar_single)) 
+        self.planner.xi_mean = np.zeros(self.planner.cem.nvar)
+        self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.tray_init_pos[:3]
+        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap').id]] = self.tray_init_pos[3:]
+
+        target_pos, target_rot = self.generate_targets()
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_pos
+        self.data.mocap_quat[self.model.body_mocapid[self.model.body(name='tray_mocap_target').id]] = target_rot
+
+        mujoco.mj_step(self.model, self.data)
+
+        self.planner.target_0 = np.concatenate([self.data.xpos[self.model.body(name="target_0").id], self.data.xquat[self.model.body(name="target_0").id]])
+        self.planner.target_1 = np.concatenate([self.data.xpos[self.model.body(name="target_1").id], self.data.xquat[self.model.body(name="target_1").id]])
+
+        self.planner.target_2[:3] = target_pos
+        self.planner.target_2[3:] = target_rot
+
+    def generate_targets(self):
+        area_center_1 = np.array([-0.25, -0.1, 0.3])
+        area_size_1 = np.array([0.15, 0.15, 0.1])
+
+        target_pos = area_center_1 + np.random.uniform(-area_size_1, area_size_1, size=3)
+        target_rot = target_rotations[np.random.randint(0, 3)]
+        return target_pos, target_rot
                 
     def gripper_control(self, gripper_idx=0, action='open'):
         if self.use_hardware:
@@ -477,24 +572,41 @@ class Planner(Node):
 
     def record_data(self):
         """Save data to npy file"""
-        self.data_buffers['setup'].append([self.model.body(name='table_0').pos, self.model.body(name='table0_marker').pos, 
-                                           self.model.body(name='table_1').pos, self.model.body(name='table1_marker').pos])
+        # self.data_buffers['setup'].append([self.model.body(name='table_0').pos, self.model.body(name='table0_marker').pos, 
+        #                                    self.model.body(name='table_1').pos, self.model.body(name='table1_marker').pos])
+        # np.savez(
+        #     self.pathes['setup'],
+        #     setup=self.data_buffers['setup'],
+        # )
+        # np.savez(
+        #     self.pathes['trajectory'],
+        #     theta=np.array(self.data_buffers['theta']),
+        #     thetadot=np.array(self.data_buffers['thetadot']),
+        #     theta_planned=np.array(self.data_buffers['theta_planned']),
+        #     thetadot_planned=np.array(self.data_buffers['thetadot_planned']),
+        #     target_0=np.array(self.data_buffers['target_0']),
+        #     target_1=np.array(self.data_buffers['target_1']),
+        #     theta_planned_batched=np.array(self.data_buffers['theta_planned_batched']),
+        #     thetadot_planned_batched=np.array(self.data_buffers['thetadot_planned_batched']),
+        #     cost_cgr_batched=np.array(self.data_buffers['cost_cgr_batched']),
+        #     timestamp=np.array(self.data_buffers['timestamp']),
+        # )
         np.savez(
-            self.pathes['setup'],
-            setup=self.data_buffers['setup'],
-        )
-        np.savez(
-            self.pathes['trajectory'],
-            theta=np.array(self.data_buffers['theta']),
-            thetadot=np.array(self.data_buffers['thetadot']),
-            theta_planned=np.array(self.data_buffers['theta_planned']),
-            thetadot_planned=np.array(self.data_buffers['thetadot_planned']),
-            target_0=np.array(self.data_buffers['target_0']),
-            target_1=np.array(self.data_buffers['target_1']),
-            theta_planned_batched=np.array(self.data_buffers['theta_planned_batched']),
-            thetadot_planned_batched=np.array(self.data_buffers['thetadot_planned_batched']),
-            cost_cgr_batched=np.array(self.data_buffers['cost_cgr_batched']),
-            timestamp=np.array(self.data_buffers['timestamp']),
+            self.pathes['benchmark'],
+            batch_size=np.array(self.data_buffers['batch_size']),
+            horizon=np.array(self.data_buffers['horizon']),
+            total_time=np.array(self.data_buffers['total_time_s']),
+            step_time=np.array(self.data_buffers['step_time_ms'], dtype=object),
+            success=np.array(self.data_buffers['success']),
+            reason=np.array(self.data_buffers['reason']),
+            target_0=np.array(self.data_buffers['target_0'], dtype=object),
+            theta=np.array(self.data_buffers['theta'], dtype=object),
+            thetadot=np.array(self.data_buffers['thetadot'], dtype=object),
+            cost_r=np.array(self.data_buffers['cost_r'], dtype=object),
+            cost_eef_to_obj=np.array(self.data_buffers['cost_eef_to_obj'], dtype=object),
+            cost_obj_to_targ=np.array(self.data_buffers['cost_obj_to_targ'], dtype=object),
+            cost_dist=np.array(self.data_buffers['cost_dist'], dtype=object),
+            cost_zy=np.array(self.data_buffers['cost_zy'], dtype=object),
         )
         self.data_saved = True
         print("Saving data...")

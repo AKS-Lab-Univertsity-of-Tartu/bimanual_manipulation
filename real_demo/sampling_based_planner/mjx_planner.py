@@ -507,7 +507,7 @@ class cem_planner():
 		# --- Execute the conditional logic ---
 		norm_v1 = jnp.linalg.norm(v1)
 		norm_v2 = jnp.linalg.norm(v2)
-		epsilon = 0.1
+		epsilon = 0.001
 
 		# First condition: Are the vectors long enough?
 		is_too_short = (norm_v1 < epsilon) | (norm_v2 < epsilon)
