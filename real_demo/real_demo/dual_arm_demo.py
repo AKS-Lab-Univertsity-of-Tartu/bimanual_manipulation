@@ -324,9 +324,9 @@ class Planner(Node):
         
         self.render_trace(self.viewer, eef_0_planned[:,:3], eef_1_planned[:,:3])
 
-        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - (self.data.xpos[self.model.body(name='object_0').id]+np.array([0, 0, 0.02])))
+        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - (self.data.xpos[self.model.body(name='object_0').id]))
         cost_r_0_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_0], np.array([0, 0.7071, 0.7071, 0]))
-        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - (self.data.xpos[self.model.body(name='object_0').id]-np.array([0, 0, 0.02])))
+        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - (self.data.xpos[self.model.body(name='object_0').id]))
         cost_r_1_pick = quaternion_distance(self.data.xquat[self.planner.hande_id_1], np.array([0, 0.7071, -0.7071, 0]))
 
         cost_g_pass = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.data.site_xpos[self.planner.tcp_id_1])
@@ -356,8 +356,8 @@ class Planner(Node):
         )
 
         target_reached_home = (
-            cost_g_0_home < self.grab_pos_thresh, 
-            cost_g_1_home < self.grab_pos_thresh 
+            cost_g_0_home < 0.1, 
+            cost_g_1_home < 0.1
         )
         if self.task_0 == 'pick' or self.task_1 == 'pick':
             self.planner.cost_weights['arm_0'][self.task_0] = 0
@@ -417,12 +417,13 @@ class Planner(Node):
             # self.model.body(name='target_0').pos = bin_positions
             # self.data.xpos[self.model.body(name='target_0').id] = bin_positions
             # self.planner.target_0[:3] = bin_positions
+            print("======================= SUCCESS =======================", flush=True)
             self.success = 1
             self.reason = 'na'
             self.reset_simulation()
 
 
-        if time.time() - self.traj_time_start > 60:
+        if time.time() - self.traj_time_start > 120:
             print("======================= TARGET FAILED: TIMEOUT =======================", flush=True)
             self.success = 0
             self.reason = 'timeout'
@@ -476,7 +477,9 @@ class Planner(Node):
         self.viewer.sync()
         
         # Print debug info
-        print(f'\n| Task 0, 1: {self.task_0, self.task_1} '
+        print(f'\n| Target idx: {self.target_idx} '
+              f'\n| Total time: {"%.0f"%(time.time() - self.traj_time_start)}s '
+              f'\n| Task 0, 1: {self.task_0, self.task_1} '
               f'\n| Step Time: {"%.0f"%((time.time() - start_time)*1000)}ms '
               f'\n| Cost theta, yz: {"%.2f, %.2f"%(float(cost_theta), float(cost_yz))} '
               f'\n| Cost g: {"%.2f"%(float(cost_g))} '
@@ -526,6 +529,8 @@ class Planner(Node):
         cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1][:2] - self.planner.object_0[:2])
         self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
 
+        print(cost_g_0_pick, cost_g_1_pick, self.arm_idx, flush=True)
+
         if self.arm_idx == 0:
             self.task_0 = 'pick'
             self.task_1 = 'home'
@@ -537,7 +542,7 @@ class Planner(Node):
         area_center_1 = np.array([-0.25, -0.35, 0.2])
         area_size_1 = np.array([0.1, 0.1, 0])
 
-        area_center_2 = np.array([-0.25, 0.35, 0.05])
+        area_center_2 = np.array([-0.25, 0.2, 0.05])
         area_size_2 = np.array([0.2, 0.1, 0])
 
         target_pos = area_center_1 + np.random.uniform(-area_size_1, area_size_1, size=3)

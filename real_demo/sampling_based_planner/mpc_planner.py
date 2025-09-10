@@ -283,10 +283,10 @@ class run_cem_planner:
         )
 
         if task_0 == 'pick' and target_reached_pick[0]:
-            target_pos_0 = self.data.xpos[self.model.body(name='object_0').id]+np.array([0, 0, 0.02])
+            target_pos_0 = self.data.xpos[self.model.body(name='object_0').id]
             target_rot_0 = np.array([0, 0.7071, 0.7071, 0])
         elif task_1 == 'pick' and target_reached_pick[1]:
-            target_pos_1 = self.data.xpos[self.model.body(name='object_0').id]-np.array([0, 0, 0.02])
+            target_pos_1 = self.data.xpos[self.model.body(name='object_0').id]
             target_rot_1 = np.array([0, 0.7071, -0.7071, 0])
         elif task_0 == 'pass' and task_1 == 'pass' and target_reached_pass:
             target_pos = (self.data.site_xpos[self.tcp_id_0]+self.data.site_xpos[self.tcp_id_1])/2
