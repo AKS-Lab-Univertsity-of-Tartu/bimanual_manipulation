@@ -59,11 +59,11 @@ class Planner(Node):
         self.use_hardware = self.get_parameter('use_hardware').get_parameter_value().bool_value
         self.record_data_ = self.get_parameter('record_data').get_parameter_value().bool_value
         self.idx = self.get_parameter('idx').get_parameter_value().integer_value
-        self.idx = str(self.idx).zfill(3)
+        self.idx = str(self.idx).zfill(2)
 
         # Planner params
         self.num_dof = 12
-        self.init_joint_position = [1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0]
+        self.init_joint_position = np.array([1.5, -1.8, 1.75, -1.25, -1.6, 0, -1.5, -1.8, 1.75, -1.25, -1.6, 0])
         num_batch = self.get_parameter('num_batch').get_parameter_value().integer_value
         num_steps = self.get_parameter('num_steps').get_parameter_value().integer_value
         maxiter_cem = self.get_parameter('maxiter_cem').get_parameter_value().integer_value
@@ -76,25 +76,31 @@ class Planner(Node):
         position_threshold = self.get_parameter('position_threshold').get_parameter_value().double_value
         rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
 
+        self.num_targets = 21
+
         if self.record_data_:
             self.pathes = {
                 "setup": os.path.join(PACKAGE_DIR, 'data', 'planner', 'setup', f'setup_{self.idx}.npz'),
                 "trajectory": os.path.join(PACKAGE_DIR, 'data', 'planner', 'trajectory', f'traj_{self.idx}.npz'),
+                "benchmark": os.path.join(PACKAGE_DIR, 'data', 'planner', 'benchmark', f'bench_{num_batch}_{num_steps}_22{self.idx}.npz'),
             }
-
-            # Store data in lists during runtime
             self.data_buffers = {
-                'setup': [],
-                'theta': [],
-                'thetadot': [],
-                'theta_planned': [],
-                'thetadot_planned': [],
-                'target_0': [],
-                'target_1': [],
-                'theta_planned_batched': [],
-                'thetadot_planned_batched': [],
-                'cost_cgr_batched': [],
-                'timestamp': [],
+                'batch_size': [num_batch],
+                'horizon': [num_steps],
+
+                'target_0': [0]*self.num_targets,
+                'total_time_s': [0]*self.num_targets,
+                'success': [0]*self.num_targets,
+                'reason': [0]*self.num_targets,
+
+                'step_time_ms': [[] for _ in range(self.num_targets)],
+                'theta': [[] for _ in range(self.num_targets)],
+                'thetadot': [[] for _ in range(self.num_targets)],
+
+                'cost_mjx': [[] for _ in range(self.num_targets)],
+                'cost_g': [[] for _ in range(self.num_targets)],
+                'cost_r': [[] for _ in range(self.num_targets)],
+                'cost_home': [[] for _ in range(self.num_targets)],
             }
 
         self.task_0 = 'home'
@@ -102,11 +108,13 @@ class Planner(Node):
         self.arm_idx = -1
         self.target_idx = 0
         self.grasp = None
+        self.success = 0
+        self.reason = 'na'
 
         cost_weights = {
             'collision': 500,
-			'theta': 0.03,
-            'cost_yz': 0.0,
+			'theta': 0.3,
+            'cost_yz': 5.0,
 
             'position': 5.0,
             'orientation': 1,
@@ -228,6 +236,8 @@ class Planner(Node):
         self.planner.cost_weights['arm_1'][self.task_1] = 1
 
         table_center = (self.model.body(name='table_0').pos+self.model.body(name='table_1').pos)/2
+
+        self.traj_time_start = time.time()
         
         # Setup viewer
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
@@ -277,7 +287,7 @@ class Planner(Node):
         elif (self.task_1 == 'pass' or self.task_1 == 'place') and self.arm_idx == 1:
             self.data.mocap_pos[self.obj_mocap_idx] = self.data.site_xpos[self.planner.tcp_id_1]
 
-        self.planner.obj_init[:3] = self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]]
+        self.planner.object_0[:3] = self.data.mocap_pos[self.obj_mocap_idx]
 
         # Get current state
         if self.use_hardware:
@@ -294,7 +304,8 @@ class Planner(Node):
         
         # Compute control
         self.thetadot, cost, cost_list, thetadot_horizon, theta_horizon, eef_0_planned, eef_1_planned = self.planner.compute_control(current_pos, current_vel, self.task_0, self.task_1)
-        
+        cost_c, cost_theta, cost_yz, cost_g, cost_r = cost_list
+
         if self.use_hardware:
             # Send velocity command
             self.rtde_c_0.speedJ(self.thetadot[:self.planner.num_dof//2], acceleration=1, time=0.1)
@@ -352,8 +363,8 @@ class Planner(Node):
             self.planner.cost_weights['arm_0'][self.task_0] = 0
             self.planner.cost_weights['arm_1'][self.task_1] = 0
 
-            cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.obj_init[:3])
-            cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.obj_init[:3])
+            cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.object_0[:3])
+            cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.object_0[:3])
             self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
 
             if self.arm_idx == 0:
@@ -406,41 +417,63 @@ class Planner(Node):
             # self.model.body(name='target_0').pos = bin_positions
             # self.data.xpos[self.model.body(name='target_0').id] = bin_positions
             # self.planner.target_0[:3] = bin_positions
+            self.success = 1
+            self.reason = 'na'
+            self.reset_simulation()
 
-            cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0] - self.planner.obj_init[:3])
-            cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1] - self.planner.obj_init[:3])
-            self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
 
-            if self.arm_idx == 0:
-                self.task_0 = 'pick'
-                self.task_1 = 'home'
-            else:
-                self.task_1 = 'pick'
-                self.task_0 = 'home'
+        if time.time() - self.traj_time_start > 60:
+            print("======================= TARGET FAILED: TIMEOUT =======================", flush=True)
+            self.success = 0
+            self.reason = 'timeout'
+            self.reset_simulation()
+
+        if cost_c > 300:
+            print("======================= TARGET FAILED: COLLISION =======================", flush=True)
+            self.success = 0
+            self.reason = 'collision'
+            self.reset_simulation()
+
 
         self.planner.cost_weights['arm_0'][self.task_0] = 1
         self.planner.cost_weights['arm_1'][self.task_1] = 1
 
-        if self.record_data_:    
+
+
+        if self.record_data_ and self.target_idx<self.num_targets:    
             theta = self.data.qpos[self.joint_mask_pos]
-            self.data_buffers['theta'].append(theta.copy())
-            self.data_buffers['thetadot'].append(self.thetadot.copy())
-            self.data_buffers['theta_planned'].append(theta_horizon.copy())
-            self.data_buffers['thetadot_planned'].append(thetadot_horizon.copy())
-            self.data_buffers['target_0'].append(self.planner.target_0.copy())
-            # self.data_buffers['target_1'].append(self.planner.target_1.copy())
-            # self.data_buffers['theta_planned_batched'].append(th_batch[0].reshape((self.num_batch, self.num_dof, self.num_steps)).copy())
-            # self.data_buffers['thetadot_planned_batched'].append(thd_batch[0].reshape((self.num_batch, self.num_dof, self.num_steps)).copy())
-            # self.data_buffers['cost_cgr_batched'].append(cost_list_batch[0].copy())
-            self.data_buffers['timestamp'].append(time.time())
+            step_time_ms = (time.time() - start_time)*1000
+            if self.task_0 == 'pick' or self.task_1 == 'pick':
+                cost_g_s = cost_g_0_pick if self.arm_idx == 0 else cost_g_1_pick
+                cost_r_s = cost_r_0_pick if self.arm_idx == 0 else cost_r_1_pick
+                cost_home = cost_g_1_home if self.arm_idx == 0 else cost_g_0_home
+            elif self.task_0 == 'pass' and self.task_1 == 'pass':
+                cost_g_s = cost_g_pass
+                cost_r_s = (cost_r_0_pass+cost_r_1_pass)/2
+                cost_home = 0
+            elif self.task_0 == 'place' or self.task_1 == 'place':
+                cost_g_s = cost_g_place
+                cost_r_s = cost_r_0_place if self.arm_idx == 0 else cost_r_1_place
+                cost_home = cost_g_1_home if self.arm_idx == 0 else cost_g_0_home
+            else:
+                cost_g_s = 0
+                cost_r_s = 0
+                cost_home = (cost_g_1_home+cost_g_0_home)/2
+
+            self.data_buffers['step_time_ms'][self.target_idx].append(step_time_ms)
+            self.data_buffers['theta'][self.target_idx].append(theta.copy())
+            self.data_buffers['thetadot'][self.target_idx].append(self.thetadot.copy())
+
+            self.data_buffers['cost_mjx'][self.target_idx].append(cost[-1])
+            self.data_buffers['cost_g'][self.target_idx].append(cost_g_s)
+            self.data_buffers['cost_r'][self.target_idx].append(cost_r_s)
+            self.data_buffers['cost_home'][self.target_idx].append(cost_home)
 
         # self.viewer.cam.azimuth = self.angle
         # self.angle = (self.angle + 0.8) % 360 
         
         # Update viewer
         self.viewer.sync()
-
-        cost_c, cost_theta, cost_yz, cost_g, cost_r = cost_list
         
         # Print debug info
         print(f'\n| Task 0, 1: {self.task_0, self.task_1} '
@@ -457,6 +490,59 @@ class Planner(Node):
         time_until_next_step = self.model.opt.timestep - (time.time() - start_time)
         if time_until_next_step > 0:
             time.sleep(time_until_next_step) 
+
+    def reset_simulation(self):
+        if self.record_data_ and self.target_idx<self.num_targets:
+            self.data_buffers['success'][self.target_idx] = self.success
+            self.data_buffers['reason'][self.target_idx] = self.reason
+            self.data_buffers['total_time_s'][self.target_idx] = (time.time() - self.traj_time_start)
+            self.data_buffers['target_0'][self.target_idx] = self.planner.target_0.copy()
+
+        self.success = 0
+        self.reason = 'na'
+        self.traj_time_start = time.time()
+        self.target_idx += 1
+
+        self.planner.cost_weights['arm_0'][self.task_0] = 0
+        self.planner.cost_weights['arm_1'][self.task_1] = 0
+        self.task_0='home'
+        self.task_1='home'
+        self.planner.xi_cov = np.kron(np.eye(self.planner.cem.num_dof), 10*np.identity(self.planner.cem.nvar_single)) 
+        self.planner.xi_mean = np.zeros(self.planner.cem.nvar)
+        self.data.qpos[self.joint_mask_pos] = self.init_joint_position
+        self.data.qvel[self.joint_mask_vel] = np.zeros(self.init_joint_position.shape)
+
+        target_pos, object_0_pos = self.generate_targets()
+
+        self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='target_0').id]] = target_pos
+        self.planner.target_0[:3] = target_pos
+
+        self.data.mocap_pos[self.obj_mocap_idx] = object_0_pos
+        self.planner.object_0[:3] = object_0_pos
+
+        mujoco.mj_step(self.model, self.data)
+
+        cost_g_0_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_0][:2] - self.planner.object_0[:2])
+        cost_g_1_pick = np.linalg.norm(self.data.site_xpos[self.planner.tcp_id_1][:2] - self.planner.object_0[:2])
+        self.arm_idx = np.argmin(np.array([cost_g_0_pick, cost_g_1_pick]))
+
+        if self.arm_idx == 0:
+            self.task_0 = 'pick'
+            self.task_1 = 'home'
+        else:
+            self.task_1 = 'pick'
+            self.task_0 = 'home'
+
+    def generate_targets(self):
+        area_center_1 = np.array([-0.25, -0.35, 0.2])
+        area_size_1 = np.array([0.1, 0.1, 0])
+
+        area_center_2 = np.array([-0.25, 0.35, 0.05])
+        area_size_2 = np.array([0.2, 0.1, 0])
+
+        target_pos = area_center_1 + np.random.uniform(-area_size_1, area_size_1, size=3)
+        object_0_pos = area_center_2 + np.random.uniform(-area_size_2, area_size_2, size=3)
+        return target_pos, object_0_pos
                 
     def gripper_control(self, gripper_idx=0, action='open'):
         pos = 50 if gripper_idx == 0 else 100
@@ -524,7 +610,7 @@ class Planner(Node):
             pose = msg.pose
             obj_pos = np.array([-pose.position.x, -pose.position.y, pose.position.z])
             self.data.mocap_pos[self.model.body_mocapid[self.model.body(name='object_0').id]] = obj_pos
-            self.planner.obj_init[:3] = obj_pos
+            self.planner.object_0[:3] = obj_pos
 
     def obstacle0_callback(self, msg):
         """Callback for obstacle pose updates"""
@@ -536,24 +622,21 @@ class Planner(Node):
 
     def record_data(self):
         """Save data to npy file"""
-        self.data_buffers['setup'].append([self.model.body(name='table_0').pos, self.model.body(name='table0_marker').pos, 
-                                           self.model.body(name='table_1').pos, self.model.body(name='table1_marker').pos])
         np.savez(
-            self.pathes['setup'],
-            setup=self.data_buffers['setup'],
-        )
-        np.savez(
-            self.pathes['trajectory'],
-            theta=np.array(self.data_buffers['theta']),
-            thetadot=np.array(self.data_buffers['thetadot']),
-            theta_planned=np.array(self.data_buffers['theta_planned']),
-            thetadot_planned=np.array(self.data_buffers['thetadot_planned']),
-            target_0=np.array(self.data_buffers['target_0']),
-            target_1=np.array(self.data_buffers['target_1']),
-            theta_planned_batched=np.array(self.data_buffers['theta_planned_batched']),
-            thetadot_planned_batched=np.array(self.data_buffers['thetadot_planned_batched']),
-            cost_cgr_batched=np.array(self.data_buffers['cost_cgr_batched']),
-            timestamp=np.array(self.data_buffers['timestamp']),
+            self.pathes['benchmark'],
+            batch_size=np.array(self.data_buffers['batch_size']),
+            horizon=np.array(self.data_buffers['horizon']),
+            total_time=np.array(self.data_buffers['total_time_s']),
+            step_time=np.array(self.data_buffers['step_time_ms'], dtype=object),
+            success=np.array(self.data_buffers['success']),
+            reason=np.array(self.data_buffers['reason']),
+            target_0=np.array(self.data_buffers['target_0'], dtype=object),
+            theta=np.array(self.data_buffers['theta'], dtype=object),
+            thetadot=np.array(self.data_buffers['thetadot'], dtype=object),
+            cost_mjx=np.array(self.data_buffers['cost_mjx'], dtype=object),
+            cost_g=np.array(self.data_buffers['cost_g'], dtype=object),
+            cost_r=np.array(self.data_buffers['cost_r'], dtype=object),
+            cost_home=np.array(self.data_buffers['cost_home'], dtype=object),
         )
         self.data_saved = True
         print("Saving data...")

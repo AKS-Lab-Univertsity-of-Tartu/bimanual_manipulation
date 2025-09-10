@@ -640,8 +640,8 @@ class cem_planner():
 		cost_r_0_pick = jnp.sum(2 * jnp.arccos(dot_product))
 
 		# PASS
-		# cost_g_0_pass = jnp.sum(jnp.abs(eef_0[:, 0] - self.pass_pos_0))
-		cost_g_0_pass = jnp.sum(jnp.linalg.norm(eef_0[:, :3] - self.pass_pos_0, axis=1))
+		cost_g_0_pass = jnp.sum(jnp.abs(eef_0[:, 0] - self.pass_pos_0[0]))
+		# cost_g_0_pass = jnp.sum(jnp.linalg.norm(eef_0[:, :3] - self.pass_pos_0, axis=1))
 
 		target_rot_0 = jnp.array([0.5, -0.5, -0.5,  0.5]) # 0.5 -0.5 -0.5  0.5
 		dot_product = jnp.abs(jnp.dot(eef_0[:, 3:]/jnp.linalg.norm(eef_0[:, 3:], axis=1).reshape(1, self.num).T, target_rot_0/jnp.linalg.norm(target_rot_0)))
@@ -670,8 +670,8 @@ class cem_planner():
 		cost_r_1_pick = jnp.sum(2 * jnp.arccos(dot_product))
 
 		# PASS
-		# cost_g_1_pass = jnp.sum(jnp.abs(eef_1[:, 0] - self.pass_pos_1))
-		cost_g_1_pass = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - self.pass_pos_1, axis=1))
+		cost_g_1_pass = jnp.sum(jnp.abs(eef_1[:, 0] - self.pass_pos_1[0]))
+		# cost_g_1_pass = jnp.sum(jnp.linalg.norm(eef_1[:, :3] - self.pass_pos_1, axis=1))
 
 
 		target_rot_1 = jnp.array([0, 0.7071, 0, 0.7071]) # 0.5 -0.5  0.5 -0.5
@@ -736,7 +736,7 @@ class cem_planner():
 	@partial(jax.jit, static_argnums=(0,))
 	def compute_xi_samples(self, key, xi_mean, xi_cov ):
 		key, subkey = jax.random.split(key)
-		xi_samples = jax.random.multivariate_normal(key, xi_mean, xi_cov+0.00003*jnp.identity(self.nvar), (self.num_batch, ))
+		xi_samples = jax.random.multivariate_normal(key, xi_mean, xi_cov+0.003*jnp.identity(self.nvar), (self.num_batch, ))
 		return xi_samples, key
 	
 	@partial(jax.jit, static_argnums=(0,))

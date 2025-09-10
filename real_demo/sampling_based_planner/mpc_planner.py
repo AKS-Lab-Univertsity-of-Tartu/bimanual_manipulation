@@ -66,7 +66,7 @@ class run_cem_planner:
         
         # Initialize CEM variables
         self.xi_mean_single = jnp.zeros(self.cem.nvar_single)
-        self.xi_cov_single = 1*jnp.identity(self.cem.nvar_single)
+        self.xi_cov_single = 10*jnp.identity(self.cem.nvar_single)
         self.xi_mean = jnp.tile(self.xi_mean_single, self.cem.num_dof)
         self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), self.xi_cov_single)
         self.lamda_init = jnp.zeros((num_batch, self.cem.nvar))
@@ -78,7 +78,7 @@ class run_cem_planner:
         self.target_rot_0 = data.xquat[model.body(name="target_0").id].copy()
         self.target_0 = np.concatenate([self.target_pos_0, self.target_rot_0])
 
-        self.obj_init = np.concatenate([
+        self.object_0 = np.concatenate([
             self.data.xpos[self.model.body(name='object_0').id],
             self.data.xquat[self.model.body(name='object_0').id]
         ])
@@ -249,12 +249,12 @@ class run_cem_planner:
             self.s_init,
             self.xi_samples,
             self.cost_weights,
-            self.obj_init,
+            self.object_0,
             self.obst_init
         )
 
         # Get mean velocity command (average middle 90% of trajectory)
-        thetadot_cem = np.mean(thetadot_horizon[1:int(self.num_steps*0.9)], axis=0)
+        thetadot_cem = np.mean(thetadot_horizon[1:6], axis=0)
 
         thetadot_0 = thetadot_cem[:6]
         thetadot_1 = thetadot_cem[6:]
