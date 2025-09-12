@@ -443,8 +443,8 @@ class Planner(Node):
         mujoco.mj_step(self.model, self.data)
 
     def generate_targets(self):
-        area_center_1 = np.array([-0.25, -0.1, 0.3])
-        area_size_1 = np.array([0.15, 0.15, 0.1])
+        area_center_1 = np.array([-0.3, -0.0, 0.3])
+        area_size_1 = np.array([0.05, 0.05, 0.05])
 
         target_pos = area_center_1 + np.random.uniform(-area_size_1, area_size_1, size=3)
         return target_pos
