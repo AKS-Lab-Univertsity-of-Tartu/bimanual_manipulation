@@ -258,7 +258,9 @@ class Planner(Node):
         self.viewer.cam.lookat[:] = self.model.body(name='table_0').pos
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
-        self.viewer.cam.elevation = -30.0 
+        self.viewer.cam.elevation = -30.0
+        self.viewer.opt.frame = mujoco.mjtFrame.mjFRAME_WORLD
+        self.viewer.cam.frame_size = 0.03  # default is usually 0.1 
 
         # Setup subscribers
         qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
@@ -408,7 +410,7 @@ class Planner(Node):
             self.reason = 'collision'
             self.reset_simulation()
 
-        if time.time() - self.traj_time_start > 120:
+        if time.time() - self.traj_time_start > 60:
             print("======================= TARGET FAILED: TIMEOUT =======================", flush=True)
             self.success = 0
             self.reason = 'timeout'
