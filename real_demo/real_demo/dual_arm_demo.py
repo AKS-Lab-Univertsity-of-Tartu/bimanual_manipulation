@@ -259,8 +259,8 @@ class Planner(Node):
         self.viewer.cam.distance = 5.0 
         self.viewer.cam.azimuth = 90.0 
         self.viewer.cam.elevation = -30.0
-        self.viewer.opt.frame = mujoco.mjtFrame.mjFRAME_WORLD
-        self.viewer.cam.frame_size = 0.03  # default is usually 0.1 
+        
+        # self.viewer.cam.frame_size = 0.03  # default is usually 0.1 
 
         # Setup subscribers
         qos_profile = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
