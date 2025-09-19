@@ -165,17 +165,17 @@ class cem_planner():
 
 		ball_geom_id = np.array([mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball')])
 
-		wall_geom_id = np.array([
-				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball'),
-				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'wall_0'),
-				mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball_pick'),
-			])
+		# wall_geom_id = np.array([
+		# 		mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball'),
+		# 		mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'wall_0'),
+		# 		mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, 'ball_pick'),
+		# 	])
 		# self.geom_ids_all = np.concatenate([self.geom_ids_all, target_geom_id])
 		ball_mask = ~jnp.any(jnp.isin(self.mjx_data.contact.geom, ball_geom_id), axis=1)
-		wall_mask = jnp.all(jnp.isin(self.mjx_data.contact.geom, wall_geom_id), axis=1)
-		wall_mask = jnp.logical_or(ball_mask, wall_mask)
+		# wall_mask = jnp.all(jnp.isin(self.mjx_data.contact.geom, wall_geom_id), axis=1)
+		# wall_mask = jnp.logical_or(ball_mask, wall_mask)
 		self.mask_move = jnp.logical_and(ball_mask, self.mask)
-		self.mask_move = jnp.logical_or(wall_mask, self.mask_move)
+		# self.mask_move = jnp.logical_or(wall_mask, self.mask_move)
 
 		self.mask = jnp.tile(self.mask, (self.num, 1))
 		self.mask_move = jnp.tile(self.mask_move, (self.num, 1))
@@ -194,8 +194,8 @@ class cem_planner():
 		self.ball_id = self.model.body(name="ball").id
 		# self.ball_qpos_idx = self.mjx_model.body_dofadr[self.ball_id]
 		self.target_mocap_idx = self.model.body_mocapid[self.model.body(name='target_0').id]
-		self.ball_mocap_idx = self.model.body_mocapid[self.model.body(name='ball').id]
-		self.ball_pick_mocap_idx = self.model.body_mocapid[self.model.body(name='ball_pick').id]
+		# self.ball_mocap_idx = self.model.body_mocapid[self.model.body(name='ball').id]
+		# self.ball_pick_mocap_idx = self.model.body_mocapid[self.model.body(name='ball_pick').id]
 
 		self.compute_rollout_batch = jax.vmap(self.compute_rollout_single, in_axes = (0, None, None, None, None, None))
 		self.compute_cost_batch = jax.vmap(self.compute_cost_single, in_axes = (0, 0, 0, 0, 0, 0, 0, 0, 0, None, None, None))
@@ -672,11 +672,11 @@ class cem_planner():
 		qvel = mjx_data.qvel.at[self.joint_mask_vel].set(init_vel)
 		qpos = mjx_data.qpos.at[self.joint_mask_pos].set(init_pos)
 		# qpos = qpos.at[self.ball_qpos_idx : self.ball_qpos_idx + 3].set(ball_init[:3])
-		mocap_pos = mjx_data.mocap_pos.at[self.target_mocap_idx].set(target_0[:3])
-		mocap_quat = mjx_data.mocap_quat.at[self.target_mocap_idx].set(target_0[3:])
-		mocap_pos = mocap_pos.at[self.ball_mocap_idx].set(ball_init[:3])
-		mocap_pos = mocap_pos.at[self.ball_pick_mocap_idx].set(ball_pick_init[:3])
-		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos, mocap_pos=mocap_pos, mocap_quat=mocap_quat)
+		# mocap_pos = mjx_data.mocap_pos.at[self.target_mocap_idx].set(target_0[:3])
+		# mocap_quat = mjx_data.mocap_quat.at[self.target_mocap_idx].set(target_0[3:])
+		# mocap_pos = mocap_pos.at[self.ball_mocap_idx].set(ball_init[:3])
+		# mocap_pos = mocap_pos.at[self.ball_pick_mocap_idx].set(ball_pick_init[:3])
+		mjx_data = mjx_data.replace(qvel=qvel, qpos=qpos)
 
 		thetadot_single = thetadot.reshape(self.num_dof, self.num)
 		_, out = jax.lax.scan(self.mjx_step, mjx_data, thetadot_single.T, length=self.num)
