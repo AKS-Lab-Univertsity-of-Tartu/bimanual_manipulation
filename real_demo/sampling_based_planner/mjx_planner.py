@@ -204,7 +204,7 @@ class cem_planner():
 			f'\n Number of variables: {self.nvar}',
 			f'\n Number of Total constraints: {self.num_total_constraints}',
 			f'\n Number of geomteric IDs for colllision: {len(self.geom_ids_all)}'
-		    f'\n{self.mask.sum()} / {self.mask.shape[0]} contacts involve robot.'
+		    # f'\n{self.mask.sum()} / {self.mask.shape[0]} contacts involve robot.'
 		)
 
     
