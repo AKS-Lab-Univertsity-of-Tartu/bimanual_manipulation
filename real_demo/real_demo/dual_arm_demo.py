@@ -43,7 +43,7 @@ class Planner(Node):
 
         # Declare all parameters
         self.declare_parameter('use_hardware', False)
-        self.declare_parameter('record_data', False)
+        self.declare_parameter('record_data', True)
         self.declare_parameter('idx', 0)
         self.declare_parameter('num_batch', 500)
         self.declare_parameter('num_steps', 15)
