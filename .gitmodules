@@ -1,3 +1,7 @@
 [submodule "collision_free_ik"]
 	path = real_demo/collision_free_ik
 	url = https://github.com/kevinzakka/mink.git
+
+[submodule "math_utils"]
+	path = real_demo/math_utils
+	url = https://github.com/alinjar1996/math_utils_aks_lab.git

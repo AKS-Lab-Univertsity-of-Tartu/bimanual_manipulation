@@ -24,7 +24,7 @@ Create colcon workspace and clone the repository:
 ```bash
 $ mkdir -p ~/colcon_ws/src
 $ cd ~/colcon_ws/src
-$ git clone -b issue_10_hardware https://github.com/alinjar1996/manipulator_mujoco.git
+$ git clone -b issue_22_pass_cube https://github.com/alinjar1996/manipulator_mujoco.git
 ```
 
 Pull submodules and build workspace:
@@ -41,28 +41,27 @@ $ python3 -m venv ~/{name}_env
 $ source ~/{name}_env/bin/activate
 $ cd ~/colcon_ws/src/manipulator_mujoco
 $ pip install -r requirements.txt
+$ deactivate
 ```
 
 Source the workspace and export virtual environment path (has to be done each time a new terminal is opened):
 ```bash
 $ cd ~/colcon_ws
 $ source install/setup.bash
-$ export PYTHONPATH=/path/to/env/{name}_env/lib/python3.12/site-packages:$PYTHONPATH
+$ export PYTHONPATH=/path/to/env/{name}/lib/python3.12/site-packages:$PYTHONPATH
 ```
 
 ## Run
 
 To check what arguments are available to set from command line:
 ```bash
-ros2 launch real_demo visualizer.launch.py --show-arguments
-```
-
-Run visualizer:
-```bash
-$ ros2 launch real_demo visualizer.launch.py [arg_name:=arg_value]
+ros2 launch real_demo dual_arm_demo.launch.py --show-arguments
 ```
 
 Run planner:
 ```bash
 $ ros2 launch real_demo dual_arm_demo.launch.py [arg_name:=arg_value]
 ```
+
+
+
