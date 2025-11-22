@@ -1,10 +1,10 @@
-import os
-from ament_index_python.packages import get_package_share_directory
+# import os
+# from ament_index_python.packages import get_package_share_directory
 
 
-xla_flags = os.environ.get('XLA_FLAGS', '')
-xla_flags += ' --xla_gpu_triton_gemm_any=True'
-os.environ['XLA_FLAGS'] = xla_flags
+# xla_flags = os.environ.get('XLA_FLAGS', '')
+# xla_flags += ' --xla_gpu_triton_gemm_any=True'
+# os.environ['XLA_FLAGS'] = xla_flags
 
 
 from functools import partial
@@ -14,6 +14,7 @@ import mujoco
 import mujoco.mjx as mjx 
 import jax
 import jax.numpy as jnp
+from math_utils.bernstein_coeff_ordern_arbitinterval import bernstein_coeff_ordern_new
 
 
 class cem_planner():
@@ -36,10 +37,15 @@ class cem_planner():
 		self.tot_time = tot_time
 		tot_time_copy = tot_time.reshape(self.num, 1)
 
-		self.P = jnp.identity(self.num) # Velocity mapping 
-		self.Pdot = jnp.diff(self.P, axis=0)/self.t # Accelaration mapping
-		self.Pddot = jnp.diff(self.Pdot, axis=0)/self.t # Jerk mapping
+		# self.P = jnp.identity(self.num) # Velocity mapping 
+		# self.Pdot = jnp.diff(self.P, axis=0)/self.t # Accelaration mapping
+		# self.Pddot = jnp.diff(self.Pdot, axis=0)/self.t # Jerk mapping
+		# self.Pint = jnp.cumsum(self.P, axis=0)*self.t # Position mapping
+
+		self.P, self.Pdot, self.Pddot = bernstein_coeff_ordern_new(10, tot_time_copy[0], tot_time_copy[-1], tot_time_copy)
 		self.Pint = jnp.cumsum(self.P, axis=0)*self.t # Position mapping
+
+
 		self.P_jax, self.Pdot_jax, self.Pddot_jax = jnp.asarray(self.P), jnp.asarray(self.Pdot), jnp.asarray(self.Pddot)
 		self.Pint_jax = jnp.asarray(self.Pint)
 
@@ -95,10 +101,16 @@ class cem_planner():
 		self.p_max = max_joint_pos		
 		    
     	# Calculating number of Inequality constraints
-		self.num_vel = self.num
-		self.num_acc = self.num - 1
-		self.num_jerk = self.num - 2
-		self.num_pos = self.num
+		# self.num_vel = self.num
+		# self.num_acc = self.num - 1
+		# self.num_jerk = self.num - 2
+		# self.num_pos = self.num
+
+		self.num_vel = self.P.shape[0]
+		self.num_acc = self.Pdot.shape[0]
+		self.num_jerk = self.Pddot.shape[0]
+		self.num_pos = self.Pint.shape[0]
+
 
 		self.num_vel_constraints = 2 * self.num_vel * num_dof
 		self.num_acc_constraints = 2 * self.num_acc * num_dof

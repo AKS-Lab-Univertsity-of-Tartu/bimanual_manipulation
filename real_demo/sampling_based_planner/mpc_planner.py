@@ -3,6 +3,7 @@ from sampling_based_planner.quat_math import quaternion_distance, quaternion_mul
 from sampling_based_planner.Simple_MLP.mlp_singledof import MLP, MLPProjectionFilter
 from ik_based_planner.ik_solver import InverseKinematicsSolver
 
+
 import mujoco
 from mujoco import viewer
 import jax.numpy as jnp
@@ -12,6 +13,8 @@ import numpy as np
 import torch 
 import contextlib
 from io import StringIO
+
+
 
 
 class run_cem_planner:
