@@ -6,6 +6,9 @@ xla_flags = os.environ.get('XLA_FLAGS', '')
 xla_flags += ' --xla_gpu_triton_gemm_any=True'
 os.environ['XLA_FLAGS'] = xla_flags
 
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
 
 from functools import partial
 import numpy as np
@@ -14,6 +17,8 @@ import mujoco
 import mujoco.mjx as mjx 
 import jax
 import jax.numpy as jnp
+
+from math_utils.bernstein_coeff_ordern_arbitinterval import bernstein_coeff_ordern_new
 
 
 class cem_planner():
@@ -36,10 +41,14 @@ class cem_planner():
 		self.tot_time = tot_time
 		tot_time_copy = tot_time.reshape(self.num, 1)
 
-		self.P = jnp.identity(self.num) # Velocity mapping 
-		self.Pdot = jnp.diff(self.P, axis=0)/self.t # Accelaration mapping
-		self.Pddot = jnp.diff(self.Pdot, axis=0)/self.t # Jerk mapping
+		# self.P = jnp.identity(self.num) # Velocity mapping 
+		# self.Pdot = jnp.diff(self.P, axis=0)/self.t # Accelaration mapping
+		# self.Pddot = jnp.diff(self.Pdot, axis=0)/self.t # Jerk mapping
+		# self.Pint = jnp.cumsum(self.P, axis=0)*self.t # Position mapping
+
+		self.P, self.Pdot, self.Pddot, self.Pint = bernstein_coeff_ordern_new(10, tot_time_copy[0], tot_time_copy[-1], tot_time_copy)
 		self.Pint = jnp.cumsum(self.P, axis=0)*self.t # Position mapping
+
 		self.P_jax, self.Pdot_jax, self.Pddot_jax = jnp.asarray(self.P), jnp.asarray(self.Pdot), jnp.asarray(self.Pddot)
 		self.Pint_jax = jnp.asarray(self.Pint)
 
@@ -95,10 +104,15 @@ class cem_planner():
 		self.p_max = max_joint_pos		
 		    
     	# Calculating number of Inequality constraints
-		self.num_vel = self.num
-		self.num_acc = self.num - 1
-		self.num_jerk = self.num - 2
-		self.num_pos = self.num
+		# self.num_vel = self.num
+		# self.num_acc = self.num - 1
+		# self.num_jerk = self.num - 2
+		# self.num_pos = self.num
+
+		self.num_vel = self.P.shape[0]
+		self.num_acc = self.Pdot.shape[0]
+		self.num_jerk = self.Pddot.shape[0]
+		self.num_pos = self.Pint.shape[0]
 
 		self.num_vel_constraints = 2 * self.num_vel * num_dof
 		self.num_acc_constraints = 2 * self.num_acc * num_dof
@@ -804,14 +818,14 @@ class cem_planner():
 		xi_mean_prev = xi_mean 
 		xi_cov_prev = xi_cov
 
-		xi_samples_reshaped = xi_samples.reshape(self.num_batch, self.num_dof, self.num)
-		xi_samples_batched_over_dof = jnp.transpose(xi_samples_reshaped, (1, 0, 2)) # shape: (DoF, B, num)
+		xi_samples_reshaped = xi_samples.reshape(self.num_batch, self.num_dof, self.P.shape[1])
+		xi_samples_batched_over_dof = jnp.transpose(xi_samples_reshaped, (1, 0, 2)) # shape: (DoF, B, P.shape[1)
 
 		state_term_reshaped = state_term.reshape(self.num_batch, self.num_dof, 1)
 		state_term_batched_over_dof = jnp.transpose(state_term_reshaped, (1, 0, 2)) #Shape: (DoF, B, 1)
 
-		lamda_init_reshaped = lamda_init.reshape(self.num_batch, self.num_dof, self.num)
-		lamda_init_batched_over_dof = jnp.transpose(lamda_init_reshaped, (1, 0, 2)) # shape: (DoF, B, num)
+		lamda_init_reshaped = lamda_init.reshape(self.num_batch, self.num_dof, self.P.shape[1])
+		lamda_init_batched_over_dof = jnp.transpose(lamda_init_reshaped, (1, 0, 2)) # shape: (DoF, B, P.shape[1)
 
 		s_init_reshaped = s_init.reshape(self.num_batch, self.num_dof, self.num_total_constraints_per_dof )
 		s_init_batched_over_dof = jnp.transpose(s_init_reshaped, (1, 0, 2)) # shape: (DoF, B, num_total_constraints_per_dof)
@@ -835,7 +849,8 @@ class cem_planner():
     	
 		avg_res_fixed_point = jnp.sum(fixed_point_residuals, axis = 0)/self.maxiter_projection
 
-		thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
+		# thetadot = jnp.dot(self.A_thetadot, xi_filtered.T).T
+		thetadot = jnp.dot(self.A_thetadot, xi_samples.T).T
 
 
 		theta, eef_0, eef_vel_lin_0, eef_vel_ang_0, eef_1, eef_vel_lin_1, eef_vel_ang_1, tray, target_0_rot, target_1_rot, collision = self.compute_rollout_batch(thetadot, init_pos, init_vel, tray_init)
