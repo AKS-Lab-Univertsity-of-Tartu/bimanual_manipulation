@@ -63,8 +63,9 @@ class run_cem_planner:
         )
         
         # Initialize CEM variables
+        self.cov_scalar_coeff = 1.0
         self.xi_mean_single = jnp.zeros(self.cem.nvar_single)
-        self.xi_cov_single = 10*jnp.identity(self.cem.nvar_single)
+        self.xi_cov_single = self.cov_scalar_coeff*jnp.identity(self.cem.nvar_single)
         self.xi_mean = jnp.tile(self.xi_mean_single, self.cem.num_dof)
         self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), self.xi_cov_single)
         self.lamda_init = jnp.zeros((num_batch, self.cem.nvar))
@@ -168,14 +169,14 @@ class run_cem_planner:
         
         # Handle covariance matrix numerical stability
         if np.isnan(self.xi_cov).any():
-            self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))
+            self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), self.cov_scalar_coeff*jnp.identity(self.cem.nvar_single))
         if np.isnan(self.xi_mean).any():
             self.xi_mean = jnp.zeros(self.cem.nvar)
 
         try:
             np.linalg.cholesky(self.xi_cov)
         except np.linalg.LinAlgError:
-            self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), 10*jnp.identity(self.cem.nvar_single))  
+            self.xi_cov = jnp.kron(jnp.eye(self.cem.num_dof), self.cov_scalar_coeff*jnp.identity(self.cem.nvar_single))  
         
         # Generate samples
         self.xi_samples, self.key = self.cem.compute_xi_samples(self.key, self.xi_mean, self.xi_cov)
