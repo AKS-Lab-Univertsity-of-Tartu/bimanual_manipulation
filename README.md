@@ -24,7 +24,7 @@ Create colcon workspace and clone the repository:
 ```bash
 $ mkdir -p ~/colcon_ws/src
 $ cd ~/colcon_ws/src
-$ git clone -b issue_19_tray_multiple_targets https://github.com/alinjar1996/manipulator_mujoco.git
+$ git clone -b tray_multiple_targets https://github.com/AKS-Lab-Univertsity-of-Tartu/bimanual_manipulation.git
 ```
 
 Pull submodules and build workspace:
