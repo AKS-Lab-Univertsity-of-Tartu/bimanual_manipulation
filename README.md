@@ -24,8 +24,9 @@ Create colcon workspace and clone the repository:
 ```bash
 $ mkdir -p ~/colcon_ws/src
 $ cd ~/colcon_ws/src
-$ git clone -b tray_multiple_targets https://github.com/AKS-Lab-Univertsity-of-Tartu/bimanual_manipulation.git
+$ git clone -b {TASK_NAME} https://github.com/AKS-Lab-Univertsity-of-Tartu/bimanual_manipulation.git
 ```
+In the ```main ``` branch, the task is set to ```tray_multiple_targets```. To use a different task, switch to the corresponding branch.
 
 Pull submodules and build workspace:
 ```bash
